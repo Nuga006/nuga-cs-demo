@@ -436,6 +436,40 @@ def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame
     return result
 
 
+def kill_events(rounds: list[dict], deaths: pd.DataFrame, player_ids: list[str]) -> list[list]:
+    """Все смерти матча с координатами — для хитмапов и страницы игрока.
+    Формат: [раунд, тик, убийца (номер игрока или None), жертва, x убийцы, y убийцы, x жертвы, y жертвы, оружие, хедшот]."""
+    index = {sid: i for i, sid in enumerate(player_ids)}
+
+    def coord(v):
+        return None if is_missing(v) else round(float(v))
+
+    def round_of(tick):
+        for ri, r in enumerate(rounds):
+            if r["start"] <= tick <= r["end"]:
+                return ri
+        return None
+
+    events = []
+    for d in deaths.to_dict("records"):
+        tick = int(d["tick"])
+        ri = round_of(tick)
+        vi = index.get(str(d.get("user_steamid")))
+        if ri is None or vi is None:
+            continue
+        ai = index.get(str(d.get("attacker_steamid")))
+        # Убийство засчитываем, только если убил противник (не сам себя и не свой)
+        if ai == vi or d.get("attacker_team_num") == d.get("user_team_num"):
+            ai = None
+        events.append([
+            ri, tick, ai, vi,
+            coord(d.get("attacker_X")), coord(d.get("attacker_Y")),
+            coord(d.get("user_X")), coord(d.get("user_Y")),
+            str(d.get("weapon") or ""), bool(d.get("headshot")),
+        ])
+    return events
+
+
 def analyze_demo(demo_path: Path) -> dict:
     """Разбирает демку и возвращает словарь, который сервер отдаст сайту в виде JSON."""
     parser = DemoParser(str(demo_path))
@@ -509,4 +543,5 @@ def analyze_demo(demo_path: Path) -> dict:
         "players": player_rows,
         "duels": duels,
         "replay": replay,
+        "kill_events": kill_events(rounds, deaths, [p["steamid"] for p in player_rows]),
     }

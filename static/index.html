@@ -103,6 +103,30 @@
   .mrow a:hover { text-decoration: underline; }
   @media (max-width: 700px) { .mrow { grid-template-columns: 6px 1fr 60px 70px; } .mrow .hide { display: none; } }
 
+  /* Разбор игрока */
+  .pctrl { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .pctrl select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+                  padding: 8px 12px; font: inherit; min-width: 200px; }
+  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .seg button { background: none; border: 0; color: var(--muted); font: inherit; padding: 5px 14px; border-radius: 8px; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .pgrid { display: grid; grid-template-columns: minmax(0, 640px) 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 820px) { .pgrid { grid-template-columns: 1fr; } }
+  .pbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .pbox h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+  .pchips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pchips .chip { padding: 4px 10px; font-size: 13px; }
+  .wrow { display: grid; grid-template-columns: 110px 1fr 34px 48px; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; }
+  .wrow .wb { height: 8px; background: #1f232c; border-radius: 4px; overflow: hidden; }
+  .wrow .wb i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .wrow .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .wrow .h { text-align: right; color: var(--muted); font-size: 12px; }
+  .drow { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .drow:first-of-type { border-top: 0; }
+  .plink { background: none; border: 0; color: var(--text); font: inherit; padding: 0; cursor: pointer;
+           border-bottom: 1px dashed var(--muted); }
+  .plink:hover { color: var(--accent); border-color: var(--accent); }
+
   /* Экономика */
   .eco { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
   .eco-grid { display: grid; gap: 4px; align-items: end; min-width: max-content; }
@@ -233,6 +257,22 @@
 
     <h2>Статистика игроков</h2>
     <div class="scroll"><table id="stats"></table></div>
+    <h2 id="playerTitle">Разбор игрока</h2>
+    <div class="pctrl">
+      <select id="pSel"></select>
+      <div class="seg" id="hMode">
+        <button data-m="kills" class="on">Где убивал</button>
+        <button data-m="deaths">Где умирал</button>
+      </div>
+    </div>
+    <div class="pgrid">
+      <div class="stage">
+        <canvas id="heat" width="1024" height="1024"></canvas>
+        <div class="note" id="heatNote"></div>
+      </div>
+      <div id="pinfo"></div>
+    </div>
+
     <h2>Матрица дуэлей</h2>
     <div class="sub" style="margin:0 0 10px">Число слева — сколько раз игрок строки убил игрока столбца, справа — наоборот.</div>
     <div class="scroll"><table class="duel" id="duels"></table></div>
@@ -358,13 +398,15 @@ function render(data) {
       const kdClass = p.kd >= 1 ? "good" : "bad";
       const rClass = p.rating >= 1.1 ? "good" : p.rating < 0.9 ? "bad" : "";
       const fkClass = p.fk > p.fd ? "good" : p.fk < p.fd ? "bad" : "";
-      html += `<tr><td>${esc(p.name)}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${p.assists}</td>` +
+      html += `<tr><td><button class="plink" data-i="${data.players.indexOf(p)}">${esc(p.name)}</button></td>` +
+              `<td>${p.kills}</td><td>${p.deaths}</td><td>${p.assists}</td>` +
               `<td class="${kdClass}">${p.kd.toFixed(2)}</td><td>${p.adr}</td><td>${p.hs}%</td>` +
               `<td>${p.kast ?? "-"}%</td><td class="${fkClass}">${p.fk ?? 0}–${p.fd ?? 0}</td>` +
               `<td>${p.ud ?? 0}</td><td class="${rClass}"><b>${p.rating?.toFixed(2) ?? "-"}</b></td></tr>`;
     }
   });
   $("stats").innerHTML = html;
+  $("stats").querySelectorAll(".plink").forEach((b) => b.addEventListener("click", () => selectPlayer(+b.dataset.i)));
 
   if (teams.length >= 2) {
     const rows = byTeam(teams[0]), cols = byTeam(teams[1]);
@@ -453,6 +495,7 @@ function setupReplay(data) {
 
   renderHighlights(data);
   renderEconomy(data);
+  setupPlayer(data);
 
   // Пробуем загрузить картинку радара
   const map = data.map;
@@ -482,7 +525,7 @@ async function loadMapData() {
 function loadRadar(map) {
   if (MAPS[map]) {
     const img = new Image();
-    img.onload = () => { R.radar = img; draw(); };
+    img.onload = () => { R.radar = img; draw(); drawHeat(); };
     img.onerror = () => {
       $("radarNote").textContent = `Нет картинки радара: положите её в static/maps/${map}.png`;
     };
@@ -608,6 +651,165 @@ function draw() {
   $("seek").value = R.pos;
   renderFeed(r, curTick);
   renderTeams(r, fa, curTick);
+}
+
+// ---------- Разбор игрока: хитмап, оружие, дуэли ----------
+const H = { player: -1, mode: "kills" };
+const heat = $("heat"), hctx = heat.getContext("2d");
+
+function setupPlayer(data) {
+  $("pSel").innerHTML = `<option value="-1">Все игроки</option>` +
+    data.players.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
+  H.player = -1;
+  $("pSel").value = "-1";
+  drawHeat();
+  renderPlayerInfo();
+}
+
+function selectPlayer(i) {
+  H.player = i;
+  $("pSel").value = String(i);
+  drawHeat();
+  renderPlayerInfo();
+  $("playerTitle").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("pSel").addEventListener("change", (e) => { H.player = +e.target.value; drawHeat(); renderPlayerInfo(); });
+$("hMode").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+  H.mode = b.dataset.m;
+  $("hMode").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  drawHeat();
+}));
+
+// Цвета хитмапа: синий (редко) → зелёный → жёлтый → красный (часто)
+let PALETTE = null;
+function heatPalette() {
+  if (PALETTE) return PALETTE;
+  const c = document.createElement("canvas"); c.width = 256; c.height = 1;
+  const x = c.getContext("2d"), g = x.createLinearGradient(0, 0, 256, 0);
+  g.addColorStop(0, "#2b6cff"); g.addColorStop(0.35, "#22d3a6"); g.addColorStop(0.6, "#e8e04a");
+  g.addColorStop(0.8, "#ff8a1f"); g.addColorStop(1, "#ff2d2d");
+  x.fillStyle = g; x.fillRect(0, 0, 256, 1);
+  const d = x.getImageData(0, 0, 256, 1).data;
+  PALETTE = [];
+  for (let i = 0; i < 256; i++) PALETTE.push([d[i * 4], d[i * 4 + 1], d[i * 4 + 2]]);
+  return PALETTE;
+}
+
+function heatPoints() {
+  const pts = [];
+  for (const e of R.data?.kill_events || []) {
+    if (H.mode === "kills") {
+      if (e[2] == null || (H.player >= 0 && e[2] !== H.player) || e[4] == null) continue;
+      pts.push([e[4], e[5]]);
+    } else {
+      if ((H.player >= 0 && e[3] !== H.player) || e[6] == null) continue;
+      pts.push([e[6], e[7]]);
+    }
+  }
+  return pts;
+}
+
+function drawHeat() {
+  if (!R.data) return;
+  const W = heat.width, pts = heatPoints();
+  hctx.fillStyle = "#0b0d11";
+  hctx.fillRect(0, 0, W, W);
+  if (R.radar) { hctx.globalAlpha = 0.55; hctx.drawImage(R.radar, 0, 0, W, W); hctx.globalAlpha = 1; }
+
+  // 1) Рисуем «пятна» в невидимом слое — где точек больше, там пятна плотнее
+  const off = document.createElement("canvas"); off.width = off.height = W;
+  const o = off.getContext("2d"), rad = 42;
+  for (const [x, y] of pts) {
+    const [cx, cy] = toCanvas(x, y);
+    const g = o.createRadialGradient(cx, cy, 0, cx, cy, rad);
+    g.addColorStop(0, "rgba(0,0,0,0.4)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    o.fillStyle = g; o.fillRect(cx - rad, cy - rad, rad * 2, rad * 2);
+  }
+  // 2) Раскрашиваем плотность по палитре
+  const img = o.getImageData(0, 0, W, W), d = img.data, pal = heatPalette();
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3];
+    if (!a) continue;
+    const c = pal[a];
+    d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2];
+    d[i + 3] = Math.min(230, a * 1.5 + 40);
+  }
+  o.putImageData(img, 0, 0);
+  hctx.drawImage(off, 0, 0);
+
+  // 3) Точные места — маленькие белые точки
+  hctx.fillStyle = "rgba(255,255,255,.85)";
+  for (const [x, y] of pts) {
+    const [cx, cy] = toCanvas(x, y);
+    hctx.beginPath(); hctx.arc(cx, cy, 3.5, 0, Math.PI * 2); hctx.fill();
+  }
+
+  const who = H.player >= 0 ? R.data.players[H.player].name : "все игроки";
+  $("heatNote").textContent = `${who}: ${pts.length} ${H.mode === "kills" ? "убийств" : "смертей"} на карте`;
+}
+
+const weaponName = (w) => w.replace("_silencer", "-S").replace("weapon_", "").toUpperCase();
+
+function renderPlayerInfo() {
+  const data = R.data, ev = data.kill_events || [];
+  const i = H.player;
+
+  if (i < 0) {
+    // Общая картина: самое убойное оружие матча
+    $("pinfo").innerHTML = `<div class="pbox"><h3>Выберите игрока</h3>` +
+      `<div class="note" style="margin:0">В списке слева или кликните по нику в таблице статистики — ` +
+      `покажем его хитмап, оружие, дуэли и лучшие моменты.</div></div>` +
+      weaponsBox(ev.filter((e) => e[2] != null), "Оружие матча");
+    return;
+  }
+
+  const p = data.players[i];
+  const mine = ev.filter((e) => e[2] === i);
+  const chips = [
+    ["Rating", p.rating?.toFixed(2)], ["K / D", `${p.kills} / ${p.deaths}`], ["ADR", p.adr],
+    ["KAST", `${p.kast}%`], ["HS", `${p.hs}%`], ["FK–FD", `${p.fk}–${p.fd}`],
+  ].map(([k, v]) => `<span class="chip">${k}: <b>${v ?? "-"}</b></span>`).join("");
+
+  // Дуэли против каждого соперника по kill_events
+  const rivals = data.players.map((q, j) => ({ q, j })).filter(({ q }) => q.team !== p.team);
+  const duels = rivals.map(({ q, j }) => {
+    const won = ev.filter((e) => e[2] === i && e[3] === j).length;
+    const lost = ev.filter((e) => e[2] === j && e[3] === i).length;
+    const cls = won > lost ? "good" : won < lost ? "bad" : "";
+    return { q, won, lost, cls };
+  }).sort((a, b) => (b.won - b.lost) - (a.won - a.lost));
+
+  const hls = (data.replay?.highlights || []).filter((h) => h.player === i);
+
+  $("pinfo").innerHTML =
+    `<div class="pbox"><h3>${esc(p.name)}</h3><div class="pchips">${chips}</div></div>` +
+    weaponsBox(mine, "Оружие") +
+    `<div class="pbox"><h3>Дуэли</h3>` +
+    duels.map((d) => `<div class="drow"><span>${esc(d.q.name)}</span><b class="${d.cls}">${d.won} : ${d.lost}</b></div>`).join("") +
+    `</div>` +
+    (hls.length
+      ? `<div class="pbox"><h3>Лучшие моменты</h3><div class="hl" style="margin:0;flex-wrap:wrap">` +
+        hls.map((h, k) => `<button class="hcard pjump" data-k="${k}"><span class="bd ${h.type === "ACE" ? "ace" : h.type === "4K" ? "k4" : h.type === "3K" ? "k3" : "cl"}">${esc(h.type)}</span>` +
+          `<span class="hs">Раунд ${h.round + 1}</span></button>`).join("") + `</div></div>`
+      : "");
+
+  $("pinfo").querySelectorAll(".pjump").forEach((b) => b.addEventListener("click", () => jumpTo(hls[+b.dataset.k])));
+}
+
+function weaponsBox(events, title) {
+  const by = {};
+  for (const e of events) {
+    const w = weaponName(e[8] || "?");
+    by[w] = by[w] || { k: 0, hs: 0 };
+    by[w].k++; if (e[9]) by[w].hs++;
+  }
+  const list = Object.entries(by).sort((a, b) => b[1].k - a[1].k).slice(0, 8);
+  if (!list.length) return `<div class="pbox"><h3>${title}</h3><div class="note" style="margin:0">Нет убийств</div></div>`;
+  const max = list[0][1].k;
+  return `<div class="pbox"><h3>${title}</h3>` + list.map(([w, v]) =>
+    `<div class="wrow"><span>${esc(w)}</span><span class="wb"><i style="width:${(v.k / max) * 100}%"></i></span>` +
+    `<span class="n">${v.k}</span><span class="h">${Math.round((v.hs / v.k) * 100)}% HS</span></div>`).join("") + `</div>`;
 }
 
 // Экономика: стоимость закупки каждой команды в каждом раунде
