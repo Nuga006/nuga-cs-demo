@@ -1,0 +1,6 @@
+demoparser2
+pandas
+zstandard
+fastapi
+uvicorn
+python-multipart

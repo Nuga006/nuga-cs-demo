@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuga CS Demo</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --line: #262a33;
+    --text: #e8e9ec; --muted: #8b909c; --accent: #ff5a1f;
+    --win: #2fb36b; --lose: #e0474c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin-bottom: 28px; }
+
+  .drop { display: block; border: 2px dashed var(--line); border-radius: 14px; padding: 40px 16px;
+          text-align: center; background: var(--panel); cursor: pointer; transition: .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); }
+  .drop b { color: var(--accent); }
+  .drop small { color: var(--muted); display: block; margin-top: 6px; }
+  input[type=file] { display: none; }
+
+  .status { margin-top: 16px; color: var(--muted); min-height: 22px; }
+  .status.err { color: var(--lose); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 8px; display: none; }
+  .bar div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+  .result { display: none; margin-top: 32px; }
+  .meta { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; }
+  .chip b { color: var(--accent); }
+
+  h2 { font-size: 18px; margin: 28px 0 10px; }
+  .scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; white-space: nowrap; }
+  th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  th:first-child, td:first-child { text-align: left; }
+  tr:last-child td { border-bottom: 0; }
+  .team-head td { background: #1f232c; color: var(--accent); font-weight: 600; text-align: left; }
+  .good { color: var(--win); } .bad { color: var(--lose); }
+
+  .duel td { text-align: center; min-width: 70px; }
+  .duel th { text-align: center; }
+  .cell { border-radius: 6px; padding: 4px 6px; display: inline-block; min-width: 52px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Nuga <span>CS</span> Demo</h1>
+  <div class="sub">Загрузите демку CS2 с FACEIT — получите статистику и матрицу дуэлей.</div>
+
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept=".dem,.gz,.zst">
+    <div><b>Выберите файл</b> или перетащите его сюда</div>
+    <small>.dem, .dem.gz или .dem.zst</small>
+  </label>
+  <div class="status" id="status"></div>
+  <div class="bar" id="bar"><div></div></div>
+
+  <div class="result" id="result">
+    <div class="meta" id="meta"></div>
+    <h2>Статистика игроков</h2>
+    <div class="scroll"><table id="stats"></table></div>
+    <h2>Матрица дуэлей</h2>
+    <div class="sub" style="margin:0 0 10px">Число слева — сколько раз игрок строки убил игрока столбца, справа — наоборот.</div>
+    <div class="scroll"><table class="duel" id="duels"></table></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const drop = $("drop"), fileInput = $("file"), statusEl = $("status"), bar = $("bar");
+
+// Защита от "вредных" ников: превращаем спецсимволы в безопасный текст
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function setStatus(text, isError = false) {
+  statusEl.textContent = text;
+  statusEl.className = "status" + (isError ? " err" : "");
+}
+
+// Перетаскивание файла
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault(); drop.classList.remove("over");
+  if (e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) upload(fileInput.files[0]); });
+
+// Отправка файла на сервер с полоской прогресса
+function upload(file) {
+  $("result").style.display = "none";
+  bar.style.display = "block";
+  bar.firstElementChild.style.width = "0";
+  setStatus(`Загружаем ${file.name}...`);
+
+  const form = new FormData();
+  form.append("file", file);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/analyze");
+
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round((e.loaded / e.total) * 100);
+    bar.firstElementChild.style.width = pct + "%";
+    if (pct === 100) setStatus("Разбираем демку... это может занять до минуты");
+  };
+  xhr.onload = () => {
+    bar.style.display = "none";
+    let data;
+    try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
+    if (xhr.status !== 200) return setStatus(data.detail || "Ошибка сервера", true);
+    setStatus("Готово!");
+    render(data);
+  };
+  xhr.onerror = () => { bar.style.display = "none"; setStatus("Нет связи с сервером", true); };
+  xhr.send(form);
+}
+
+function render(data) {
+  const teams = [...new Set(data.players.map((p) => p.team))].sort();
+  const byTeam = (t) => data.players.filter((p) => p.team === t).sort((a, b) => b.kills - a.kills);
+  const teamName = (i) => `Команда ${i + 1}`;
+
+  $("meta").innerHTML =
+    `<div class="chip">Карта: <b>${esc(data.map)}</b></div>` +
+    `<div class="chip">Раундов: <b>${data.rounds}</b></div>`;
+
+  // Таблица статистики
+  let html = "<tr><th>Игрок</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>HS%</th><th>ADR</th></tr>";
+  teams.forEach((t, i) => {
+    html += `<tr class="team-head"><td colspan="7">${teamName(i)}</td></tr>`;
+    for (const p of byTeam(t)) {
+      const kdClass = p.kd >= 1 ? "good" : "bad";
+      html += `<tr><td>${esc(p.name)}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${p.assists}</td>` +
+              `<td class="${kdClass}">${p.kd.toFixed(2)}</td><td>${p.hs}%</td><td>${p.adr}</td></tr>`;
+    }
+  });
+  $("stats").innerHTML = html;
+
+  // Матрица дуэлей: строки — команда 1, столбцы — команда 2
+  if (teams.length < 2) { $("duels").innerHTML = ""; return; }
+  const rows = byTeam(teams[0]), cols = byTeam(teams[1]);
+  const count = (a, v) => (data.duels[a.steamid] || {})[v.steamid] || 0;
+
+  let d = "<tr><th></th>" + cols.map((c) => `<th>${esc(c.name)}</th>`).join("") + "</tr>";
+  for (const r of rows) {
+    d += `<tr><td>${esc(r.name)}</td>`;
+    for (const c of cols) {
+      const won = count(r, c), lost = count(c, r);
+      // Зелёный — строка выиграла дуэль, красный — проиграла
+      const color = won > lost ? "rgba(47,179,107,.25)" : won < lost ? "rgba(224,71,76,.25)" : "transparent";
+      d += `<td><span class="cell" style="background:${color}">${won} : ${lost}</span></td>`;
+    }
+    d += "</tr>";
+  }
+  $("duels").innerHTML = d;
+  $("result").style.display = "block";
+}
+</script>
+</body>
+</html>
