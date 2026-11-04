@@ -361,6 +361,78 @@ def bomb_events(parser: DemoParser) -> list[dict]:
     return sorted(result, key=lambda b: b["tick"])
 
 
+UTILITY_WEAPONS = ("hegrenade", "inferno", "molotov", "incgrenade")
+TRADE_TICKS = 5 * 64      # смерть считается «разменянной», если убийцу убили в течение 5 секунд
+
+
+def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame,
+                   enemy_hurts: pd.DataFrame, player_ids: list[str]) -> dict:
+    """KAST, первые убийства/смерти, урон гранатами и Rating 1.0 (формула HLTV)."""
+    n = max(len(rounds), 1)
+    st = {sid: {"kast_rounds": 0, "fk": 0, "fd": 0, "mk": [0] * 6} for sid in player_ids}
+
+    for r in rounds:
+        in_round = lambda df: df[(df["tick"] >= r["start"]) & (df["tick"] <= r["end"])]
+        rd = in_round(deaths).sort_values("tick")
+        rk = in_round(kills)
+
+        # Первая смерть раунда: убийца получает FK, погибший — FD
+        first = rk.sort_values("tick").head(1)
+        for row in first.itertuples(index=False):
+            if row.attacker_steamid in st:
+                st[row.attacker_steamid]["fk"] += 1
+            if row.user_steamid in st:
+                st[row.user_steamid]["fd"] += 1
+
+        # Сколько убийств за раунд у каждого — для мульти-киллов
+        for sid, cnt in rk.groupby("attacker_steamid").size().items():
+            if sid in st:
+                st[sid]["mk"][min(int(cnt), 5)] += 1
+
+        died = set(rd["user_steamid"])
+        killed = set(rk["attacker_steamid"])
+        assisted = set(rd["assister_steamid"]) if "assister_steamid" in rd.columns else set()
+
+        # Размены: игрока убили, а его убийцу в течение 5 секунд убил кто-то другой
+        traded = set()
+        rows = list(rd.itertuples(index=False))
+        for i, d in enumerate(rows):
+            for later in rows[i + 1:]:
+                if later.tick - d.tick > TRADE_TICKS:
+                    break
+                if later.user_steamid == d.attacker_steamid:
+                    traded.add(d.user_steamid)
+                    break
+
+        for sid in st:
+            if sid in killed or sid in assisted or sid not in died or sid in traded:
+                st[sid]["kast_rounds"] += 1
+
+    # Урон гранатами по противникам
+    util = {}
+    if "weapon" in enemy_hurts.columns:
+        u = enemy_hurts[enemy_hurts["weapon"].astype(str).str.lower().isin(UTILITY_WEAPONS)]
+        util = u.groupby("attacker_steamid")["dmg"].sum().to_dict()
+
+    result = {}
+    for sid, s in st.items():
+        k = int((kills["attacker_steamid"] == sid).sum())
+        d = int((deaths["user_steamid"] == sid).sum())
+        mk = s["mk"]
+        # Rating 1.0: убийства, выживание и мульти-киллы, нормированные на средние значения
+        kill_r = k / n / 0.679
+        surv_r = (n - d) / n / 0.317
+        multi_r = (mk[1] + 4 * mk[2] + 9 * mk[3] + 16 * mk[4] + 25 * mk[5]) / n / 1.277
+        result[sid] = {
+            "rating": round((kill_r + 0.7 * surv_r + multi_r) / 2.7, 2),
+            "kast": round(s["kast_rounds"] / n * 100),
+            "fk": s["fk"],
+            "fd": s["fd"],
+            "ud": round(float(util.get(sid, 0))),
+        }
+    return result
+
+
 def analyze_demo(demo_path: Path) -> dict:
     """Разбирает демку и возвращает словарь, который сервер отдаст сайту в виде JSON."""
     parser = DemoParser(str(demo_path))
@@ -396,6 +468,8 @@ def analyze_demo(demo_path: Path) -> dict:
     if "team_number" in players.columns:
         players = players[players["team_number"].isin([2, 3])]
 
+    adv = advanced_stats(rounds, deaths, kills, enemy_hurts, [str(x) for x in players["steamid"]])
+
     player_rows = []
     for _, p in players.iterrows():
         sid = p["steamid"]
@@ -415,6 +489,7 @@ def analyze_demo(demo_path: Path) -> dict:
             "kd": round(k / d, 2) if d else float(k),
             "hs": round(hs / k * 100) if k else 0,
             "adr": round(dmg / num_rounds, 1),
+            **adv.get(sid, {}),
         })
 
     # Дуэли: duels[убийца][жертва] = сколько раз

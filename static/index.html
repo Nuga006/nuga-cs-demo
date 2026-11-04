@@ -104,7 +104,12 @@
   @media (max-width: 700px) { .mrow { grid-template-columns: 6px 1fr 60px 70px; } .mrow .hide { display: none; } }
 
   /* Хайлайты */
-  .hl { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; }
+  .hl { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px;
+        scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .hl::-webkit-scrollbar { height: 6px; }
+  .hl::-webkit-scrollbar-track { background: transparent; }
+  .hl::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  .hl::-webkit-scrollbar-thumb:hover { background: var(--muted); }
   .hcard { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; background: var(--panel);
            border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; cursor: pointer;
            color: var(--text); font: inherit; text-align: left; transition: .15s; }
@@ -314,13 +319,22 @@ function render(data) {
     `<div class="chip">Карта: <b>${esc(data.map)}</b></div>` +
     `<div class="chip">Раундов: <b>${data.rounds}</b></div>`;
 
-  let html = "<tr><th>Игрок</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>HS%</th><th>ADR</th></tr>";
+  let html = `<tr><th>Игрок</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>ADR</th><th>HS%</th>` +
+    `<th title="Раунды, где игрок убил, ассистнул, выжил или его разменяли">KAST</th>` +
+    `<th title="Первые убийства – первые смерти в раунде">FK–FD</th>` +
+    `<th title="Урон гранатами (HE и молотовы)">UD</th>` +
+    `<th title="HLTV Rating 1.0: 1.00 — средний уровень">Rating</th></tr>`;
   teams.forEach((t, i) => {
-    html += `<tr class="team-head"><td colspan="7">${teamName(i)}</td></tr>`;
-    for (const p of byTeam(t)) {
+    html += `<tr class="team-head"><td colspan="11">${teamName(i)}</td></tr>`;
+    // Сортируем по рейтингу — лучший игрок команды сверху
+    for (const p of byTeam(t).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))) {
       const kdClass = p.kd >= 1 ? "good" : "bad";
+      const rClass = p.rating >= 1.1 ? "good" : p.rating < 0.9 ? "bad" : "";
+      const fkClass = p.fk > p.fd ? "good" : p.fk < p.fd ? "bad" : "";
       html += `<tr><td>${esc(p.name)}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${p.assists}</td>` +
-              `<td class="${kdClass}">${p.kd.toFixed(2)}</td><td>${p.hs}%</td><td>${p.adr}</td></tr>`;
+              `<td class="${kdClass}">${p.kd.toFixed(2)}</td><td>${p.adr}</td><td>${p.hs}%</td>` +
+              `<td>${p.kast ?? "-"}%</td><td class="${fkClass}">${p.fk ?? 0}–${p.fd ?? 0}</td>` +
+              `<td>${p.ud ?? 0}</td><td class="${rClass}"><b>${p.rating?.toFixed(2) ?? "-"}</b></td></tr>`;
     }
   });
   $("stats").innerHTML = html;
