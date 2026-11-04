@@ -4,6 +4,7 @@
 
 import json
 import os
+import re
 import shutil
 import urllib.error
 import urllib.parse
@@ -11,7 +12,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -22,6 +23,7 @@ UPLOADS = BASE / "uploads"          # временная папка для за�
 UPLOADS.mkdir(exist_ok=True)
 
 ALLOWED = (".dem.zst", ".dem.gz", ".dem")
+MAX_UPLOAD = 700 * 1024 * 1024        # больше 700 МБ не принимаем — защита от слишком больших файлов
 
 
 def load_env(path: Path) -> None:
@@ -50,6 +52,59 @@ def index():
     return FileResponse(BASE / "static" / "index.html")
 
 
+def run_analysis(raw: Path) -> dict:
+    """Распаковать, разобрать и удалить файлы демки."""
+    dem = None
+    try:
+        dem = prepare_demo(raw)
+        return analyze_demo(dem)
+    except Exception as e:
+        raise HTTPException(500, f"Не удалось разобрать демку: {e}")
+    finally:
+        raw.unlink(missing_ok=True)
+        if dem is not None and dem != raw:
+            dem.unlink(missing_ok=True)
+
+
+@app.post("/api/chunk")
+def upload_chunk(
+    upload_id: str = Form(...),
+    index: int = Form(...),
+    total: int = Form(...),
+    filename: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """Загрузка демки по кусочкам: так файл проходит даже через сервисы с лимитом 100 МБ на запрос.
+    Кусочки приходят по порядку, мы дописываем их в один файл, а после последнего — разбираем демку."""
+    # Номер загрузки придумывает браузер — проверяем, что там только буквы и цифры (защита от путей вроде ../)
+    if not re.fullmatch(r"[a-f0-9]{32}", upload_id):
+        raise HTTPException(400, "Неверный номер загрузки")
+    suffix = next((x for x in ALLOWED if filename.lower().endswith(x)), None)
+    if suffix is None:
+        raise HTTPException(400, "Нужен файл .dem, .dem.gz или .dem.zst")
+    if not (0 <= index < total <= 100):
+        raise HTTPException(400, "Неверный номер кусочка")
+
+    part = UPLOADS / f"{upload_id}.part"
+    if index == 0:
+        part.unlink(missing_ok=True)
+    elif not part.exists():
+        raise HTTPException(400, "Загрузка не найдена — начните заново")
+
+    with part.open("ab") as f:
+        shutil.copyfileobj(file.file, f)
+    if part.stat().st_size > MAX_UPLOAD:
+        part.unlink(missing_ok=True)
+        raise HTTPException(413, "Файл слишком большой")
+
+    if index < total - 1:
+        return {"ok": True}
+
+    raw = UPLOADS / f"{upload_id}{suffix}"
+    part.rename(raw)
+    return run_analysis(raw)
+
+
 @app.post("/api/analyze")
 def analyze(file: UploadFile = File(...)):
     """Принимает демку, разбирает её и возвращает статистику в JSON."""
@@ -63,17 +118,7 @@ def analyze(file: UploadFile = File(...)):
     with raw.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    dem = None
-    try:
-        dem = prepare_demo(raw)
-        return analyze_demo(dem)
-    except Exception as e:
-        raise HTTPException(500, f"Не удалось разобрать демку: {e}")
-    finally:
-        # Демки большие — удаляем сразу после разбора
-        raw.unlink(missing_ok=True)
-        if dem is not None and dem != raw:
-            dem.unlink(missing_ok=True)
+    return run_analysis(raw)
 
 
 # ---------------- FACEIT ----------------
