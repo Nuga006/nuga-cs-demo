@@ -78,6 +78,38 @@
   .note { color: var(--muted); font-size: 13px; margin-top: 8px; }
   .kill.bomb { color: var(--muted); font-style: italic; }
 
+  /* Хайлайты */
+  .hl { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; }
+  .hcard { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; background: var(--panel);
+           border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; cursor: pointer;
+           color: var(--text); font: inherit; text-align: left; transition: .15s; }
+  .hcard:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .hcard .bd { font-weight: 800; font-size: 14px; border-radius: 8px; padding: 6px 8px; min-width: 46px; text-align: center; }
+  .bd.ace { background: linear-gradient(135deg, #ffd34d, #ff8a1f); color: #1a1205; }
+  .bd.k4 { background: #ff5a1f; color: #fff; } .bd.k3 { background: #3a3f4b; color: #fff; }
+  .bd.cl { background: #7b4dff; color: #fff; }
+  .hcard .hn { font-weight: 600; font-size: 14px; }
+  .hcard .hs { color: var(--muted); font-size: 12px; }
+
+  /* Таблица команд в реплее */
+  .side { display: flex; flex-direction: column; gap: 12px; }
+  .tpanel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .thead { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #1f232c; font-weight: 600; }
+  .thead .tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; color: #0f1115; }
+  .thead .tag.t { background: var(--t); } .thead .tag.ct { background: var(--ct); }
+  .thead .sc { margin-left: auto; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .prow { display: grid; grid-template-columns: minmax(0, 1fr) 44px auto 74px 56px; gap: 8px;
+          align-items: center; padding: 5px 12px; font-size: 13px; border-top: 1px solid var(--line); }
+  .prow.dead { opacity: .38; }
+  .prow .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .prow .hpb { height: 5px; background: #000; border-radius: 3px; overflow: hidden; }
+  .prow .hpb i { display: block; height: 100%; }
+  .prow .nd { display: flex; gap: 3px; color: var(--muted); font-size: 11px; min-width: 0; }
+  .prow .nd b { color: #fff; background: #2a2f3a; border-radius: 3px; padding: 0 4px; font-weight: 600; }
+  .prow .nd .c4 { background: #a3241c; }
+  .prow .wp { color: var(--muted); font-size: 12px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow .mn { color: #e8c547; text-align: right; font-variant-numeric: tabular-nums; }
+
   .score { display: flex; align-items: center; justify-content: center; gap: 16px;
            background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
            padding: 10px 16px; margin-bottom: 12px; font-weight: 600; }
@@ -103,6 +135,9 @@
   <div class="result" id="result">
     <div class="meta" id="meta"></div>
 
+    <h2>Хайлайты</h2>
+    <div class="hl" id="highlights"></div>
+
     <h2>2D-реплей</h2>
     <div class="score" id="score"></div>
     <div class="rounds" id="rounds"></div>
@@ -112,8 +147,8 @@
         <div class="controls">
           <button id="play">▶ Play</button>
           <select id="speed">
-            <option value="1">1x</option>
-            <option value="2" selected>2x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
             <option value="4">4x</option>
             <option value="8">8x</option>
           </select>
@@ -122,9 +157,12 @@
         </div>
         <div class="note" id="radarNote"></div>
       </div>
-      <div class="feed">
-        <h3>Киллфид раунда</h3>
-        <div id="feed"></div>
+      <div class="side">
+        <div id="teams"></div>
+        <div class="feed">
+          <h3>Киллфид раунда</h3>
+          <div id="feed"></div>
+        </div>
       </div>
     </div>
 
@@ -294,6 +332,8 @@ function setupReplay(data) {
     return w ? (w === teamOneSide ? 0 : 1) : -1;
   });
 
+  renderHighlights(data);
+
   // Пробуем загрузить картинку радара
   const map = data.map;
   $("radarNote").textContent = "";
@@ -388,6 +428,8 @@ function draw() {
   const fa = r.frames[a], fb = r.frames[b];
   const curTick = r.ticks[a] + t * (r.ticks[b] - r.ticks[a]);
 
+  drawGrenades(r, curTick);
+  drawShots(r, curTick);
   drawBomb(r, curTick);
 
   ctx.font = "bold 20px system-ui, sans-serif";
@@ -400,6 +442,13 @@ function draw() {
     const color = teamColor(p[3]);
 
     if (p[2]) {
+      // Куда смотрит игрок: плавно поворачиваем между кадрами (по кратчайшему пути через 360°)
+      if (p[6] != null) {
+        let yaw = p[6];
+        if (q[6] != null) yaw += (((q[6] - p[6] + 540) % 360) - 180) * t;
+        drawView(x, y, yaw, color);
+      }
+
       // Живой игрок — кружок и ник
       ctx.beginPath();
       ctx.arc(x, y, 11, 0, Math.PI * 2);
@@ -437,6 +486,162 @@ function draw() {
   $("time").textContent = fmtTime((curTick - r.start) / TICKRATE);
   $("seek").value = R.pos;
   renderFeed(r, curTick);
+  renderTeams(r, fa, curTick);
+}
+
+// Карточки хайлайтов: клик — переход в реплей за 3 секунды до момента
+function renderHighlights(data) {
+  const list = data.replay?.highlights || [];
+  if (!list.length) {
+    $("highlights").innerHTML = `<div class="note">В этом матче не нашлось мульти-киллов и клатчей</div>`;
+    return;
+  }
+  const badge = (t) => (t === "ACE" ? "ace" : t === "4K" ? "k4" : t === "3K" ? "k3" : "cl");
+  $("highlights").innerHTML = list.map((h, i) =>
+    `<button class="hcard" data-i="${i}"><span class="bd ${badge(h.type)}">${esc(h.type)}</span>` +
+    `<span><div class="hn">${esc(data.players[h.player]?.name ?? "?")}</div>` +
+    `<div class="hs">Раунд ${h.round + 1} · ${esc(h.detail)}</div></span></button>`).join("");
+  $("highlights").querySelectorAll(".hcard").forEach((b) =>
+    b.addEventListener("click", () => jumpTo(list[+b.dataset.i])));
+}
+
+function jumpTo(h) {
+  selectRound(h.round);
+  const r = R.data.replay.rounds[h.round];
+  const from = h.tick - 3 * TICKRATE;
+  const i = r.ticks.findIndex((t) => t >= from);
+  R.pos = Math.max(0, i);
+  draw();
+  play();
+  document.querySelector(".replay").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// Перевод расстояния в игровых единицах в пиксели на холсте
+function unitsToPx(x, y, units) {
+  const [ax] = toCanvas(x, y), [bx] = toCanvas(x + units, y);
+  return Math.abs(bx - ax);
+}
+
+// Смоки, молотовы, флешки и HE на карте
+function drawGrenades(r, curTick) {
+  for (const g of r.grenades || []) {
+    if (curTick < g.start || curTick > g.end) continue;
+    const [x, y] = toCanvas(g.x, g.y);
+    const age = curTick - g.start, left = g.end - curTick;
+    // Плавное появление и исчезание
+    const fade = Math.min(1, age / 32, left / 32);
+
+    if (g.type === "smoke") {
+      const rad = unitsToPx(g.x, g.y, 144);           // радиус смока в игре ~144 единицы
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(205,210,220,${0.6 * fade})`; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = `rgba(255,255,255,${0.5 * fade})`; ctx.stroke();
+    } else if (g.type === "molotov") {
+      const rad = unitsToPx(g.x, g.y, 120);
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,110,30,${0.45 * fade})`; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = `rgba(255,170,60,${0.8 * fade})`; ctx.stroke();
+    } else {
+      // Флешка — белая вспышка, HE — красное кольцо; быстро гаснут
+      const k = 1 - age / 32;
+      const rad = unitsToPx(g.x, g.y, g.type === "flash" ? 90 : 110) * (0.6 + 0.4 * (1 - k));
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
+      if (g.type === "flash") { ctx.fillStyle = `rgba(255,255,255,${0.7 * k})`; ctx.fill(); }
+      else { ctx.lineWidth = 5; ctx.strokeStyle = `rgba(255,70,40,${0.9 * k})`; ctx.stroke(); }
+    }
+  }
+}
+
+// Трассеры выстрелов: короткая линия, которая гаснет за ~0.2 секунды
+function drawShots(r, curTick) {
+  const LIFE = 12, LEN = 700;                          // сколько тиков видно линию и её длина в игре
+  for (const [tick, sx, sy, yaw, team] of r.shots || []) {
+    const dt = curTick - tick;
+    if (dt < 0 || dt > LIFE) continue;
+    const ang = (yaw * Math.PI) / 180;
+    const [x1, y1] = toCanvas(sx, sy);
+    const [x2, y2] = toCanvas(sx + Math.cos(ang) * LEN, sy + Math.sin(ang) * LEN);
+    const g = ctx.createLinearGradient(x1, y1, x2, y2);
+    const a = 1 - dt / LIFE;
+    g.addColorStop(0, hexToRgba(teamColor(team), 0.95 * a));
+    g.addColorStop(1, hexToRgba(teamColor(team), 0));
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.lineWidth = 3; ctx.strokeStyle = g; ctx.stroke();
+  }
+}
+
+// Таблица команд: деньги, оружие, гранаты, HP; мёртвые — серые
+function renderTeams(r, frame, curTick) {
+  const teams = [...new Set(R.data.players.map((p) => p.team))].sort();
+  const lastTick = r.ticks[r.ticks.length - 1];
+  const roundOver = curTick >= lastTick;
+
+  const panels = teams.map((t, ti) => {
+    const idx = R.data.players.map((p, i) => (p.team === t ? i : -1)).filter((i) => i >= 0);
+    const any = idx.find((i) => frame[i]);
+    const side = any !== undefined ? frame[any][3] : 0;     // 2 = T, 3 = CT в этом раунде
+
+    // Счёт: выигранные раунды до этого + этот, если он уже закончился
+    let score = R.roundWinners.slice(0, R.round).filter((w) => w === ti).length;
+    if (roundOver && R.roundWinners[R.round] === ti) score++;
+
+    const rows = idx
+      .map((i) => ({ pl: R.data.players[i], p: frame[i] }))
+      .sort((a, b) => (b.p?.[2] ?? 0) - (a.p?.[2] ?? 0) || (b.p?.[7] ?? 0) - (a.p?.[7] ?? 0))
+      .map(({ pl, p }) => {
+        if (!p) return "";
+        const alive = p[2] === 1;
+        const hp = alive ? p[4] : 0;
+        const hpColor = hp > 60 ? "#2fb36b" : hp > 25 ? "#e8b14a" : "#e0474c";
+        const nades = alive ? [...(p[8] || "")].map((c) => `<b>${c}</b>`).join("") : "";
+        const bomb = alive && p[9] ? `<b class="c4">C4</b>` : "";
+        return `<div class="prow${alive ? "" : " dead"}">` +
+          `<span class="pn">${esc(pl.name)}</span>` +
+          `<span class="hpb"><i style="width:${hp}%;background:${hpColor}"></i></span>` +
+          `<span class="nd">${bomb}${nades}</span>` +
+          `<span class="wp">${alive ? esc(p[5]) : ""}</span>` +
+          `<span class="mn">$${p[7] ?? 0}</span></div>`;
+      }).join("");
+
+    const tag = side === 2 ? `<span class="tag t">T</span>` : side === 3 ? `<span class="tag ct">CT</span>` : "";
+    return { side, html: `<div class="tpanel"><div class="thead">${tag}<span>Команда ${ti + 1}</span>` +
+      `<span class="sc">${score}</span></div>${rows}</div>` };
+  });
+
+  // Как в CSDEMO: CT сверху, T снизу
+  panels.sort((a, b) => b.side - a.side);
+  $("teams").innerHTML = panels.map((p) => p.html).join("");
+}
+
+// Конус обзора и стрелка взгляда.
+// В игре 0° — это восток, 90° — север. На холсте ось Y смотрит вниз, поэтому угол берём с минусом.
+function drawView(x, y, yaw, color) {
+  const ang = (-yaw * Math.PI) / 180;
+  const reach = 90, half = (22 * Math.PI) / 180;   // длина конуса и половина угла обзора
+
+  const g = ctx.createRadialGradient(x, y, 0, x, y, reach);
+  g.addColorStop(0, hexToRgba(color, 0.45));
+  g.addColorStop(1, hexToRgba(color, 0));
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.arc(x, y, reach, ang - half, ang + half);
+  ctx.closePath();
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // Короткая стрелка точно по направлению взгляда
+  const ex = x + Math.cos(ang) * 26, ey = y + Math.sin(ang) * 26;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(ex, ey);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+}
+
+function hexToRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
 // Значок бомбы: красный — заложена, зелёный — разминирована, оранжевый взрыв — взорвалась

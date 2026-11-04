@@ -85,7 +85,8 @@ def build_rounds(parser: DemoParser) -> list[dict]:
     return rounds
 
 
-def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str], kills: pd.DataFrame) -> dict:
+def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
+                 kills: pd.DataFrame, deaths: pd.DataFrame) -> dict:
     """Собираем позиции игроков по кадрам для каждого раунда."""
     index = {sid: i for i, sid in enumerate(player_ids)}
 
@@ -96,32 +97,46 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str], 
     if not wanted:
         return {"step": REPLAY_STEP, "rounds": []}
 
-    props = ["X", "Y", "team_num", "is_alive", "health", "active_weapon_name"]
-    ticks_df = parser.parse_ticks(props, ticks=wanted)
+    # Что достаём о каждом игроке в каждом кадре:
+    #   yaw — куда смотрит (градусы), balance — деньги, inventory — что лежит в карманах
+    base_props = ["X", "Y", "team_num", "is_alive", "health", "active_weapon_name", "yaw", "balance", "armor_value"]
+    try:
+        ticks_df = parser.parse_ticks(base_props + ["inventory"], ticks=wanted)
+    except Exception:
+        ticks_df = parser.parse_ticks(base_props, ticks=wanted)   # старые демки без инвентаря
     ticks_df["steamid"] = ticks_df["steamid"].astype(str)
-    for col in props:
+    for col in base_props + ["inventory"]:
         if col not in ticks_df.columns:      # на случай, если в демке нет какого-то поля
             ticks_df[col] = None
 
-    # by_tick[тик] = список позиций всех игроков в этот момент
+    # by_tick[тик] = список состояний всех игроков в этот момент
     by_tick: dict[int, list] = {}
-    cols = ["tick", "steamid", "X", "Y", "team_num", "is_alive", "health", "active_weapon_name"]
-    for tick, sid, x, y, team, alive, hp, weapon in ticks_df[cols].itertuples(index=False):
+    cols = ["tick", "steamid"] + base_props + ["inventory"]
+    for tick, sid, x, y, team, alive, hp, weapon, yaw, money, armor, inv in ticks_df[cols].itertuples(index=False):
         i = index.get(sid)
         if i is None or pd.isna(x) or pd.isna(y):
             continue
+        nades, has_bomb = parse_inventory(inv)
         frame = by_tick.setdefault(int(tick), [None] * len(player_ids))
-        # [x, y, жив ли (1/0), команда (2 = T, 3 = CT), HP, оружие в руках]
+        # [0 x, 1 y, 2 жив (1/0), 3 команда (2 = T, 3 = CT), 4 HP, 5 оружие в руках,
+        #  6 куда смотрит, 7 деньги, 8 гранаты ("sfh..."), 9 несёт бомбу (1/0), 10 броня]
         frame[i] = [
             round(float(x)),
             round(float(y)),
             1 if alive else 0,
-            int(team) if not pd.isna(team) else 0,
-            int(hp) if not pd.isna(hp) else 0,
+            num(team),
+            num(hp),
             str(weapon) if isinstance(weapon, str) else "",
+            round(float(yaw)) if not is_missing(yaw) else None,
+            num(money),
+            nades,
+            has_bomb,
+            num(armor),
         ]
 
     bomb = bomb_events(parser)
+    grenades = grenade_events(parser)
+    shots = shot_events(parser)
 
     replay_rounds = []
     for r in rounds:
@@ -144,9 +159,186 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str], 
                 for k in round_kills.itertuples(index=False)
             ],
             "bomb": [b for b in bomb if r["start"] <= b["tick"] <= r["end"] + 64 * 3],
+            # Гранаты, которые хотя бы частично действовали в этом раунде
+            "grenades": [g for g in grenades if g["end"] >= r["start"] and g["start"] <= r["end"]],
+            # Выстрелы: [тик, x, y, угол, команда]
+            "shots": [s for s in shots if r["start"] <= s[0] <= r["end"]],
         })
 
-    return {"step": REPLAY_STEP, "rounds": replay_rounds}
+    highlights = find_highlights(replay_rounds, player_ids, kills, deaths)
+    return {"step": REPLAY_STEP, "rounds": replay_rounds, "highlights": highlights}
+
+
+def find_highlights(replay_rounds: list[dict], player_ids: list[str],
+                    kills: pd.DataFrame, deaths: pd.DataFrame) -> list[dict]:
+    """Ищем яркие моменты: мульти-киллы (3K, 4K, ACE) и выигранные клатчи (1vN)."""
+    index = {sid: i for i, sid in enumerate(player_ids)}
+    side_name = {2: "T", 3: "CT"}
+    result = []
+
+    for ri, r in enumerate(replay_rounds):
+        if not r["frames"]:
+            continue
+        # За какую сторону играет каждый игрок в этом раунде — по первому кадру
+        first = r["frames"][0]
+        side = {i: p[3] for i, p in enumerate(first) if p}
+        alive = {i for i in side}
+
+        # --- Мульти-киллы ---
+        rk = kills[(kills["tick"] >= r["start"]) & (kills["tick"] <= r["end"])]
+        for sid, group in rk.groupby("attacker_steamid"):
+            n = len(group)
+            if n >= 3 and sid in index:
+                result.append({
+                    "round": ri,
+                    "tick": int(group["tick"].min()),
+                    "type": {3: "3K", 4: "4K"}.get(n, "ACE"),
+                    "player": index[sid],
+                    "detail": f"{n} убийства" if n < 5 else f"{n} убийств",
+                })
+
+        # --- Клатчи: проходим по смертям по порядку и следим, кто остался жив ---
+        rd = deaths[(deaths["tick"] >= r["start"]) & (deaths["tick"] <= r["end"])].sort_values("tick")
+        clutch = None          # (игрок, против скольких, тик)
+        for row in rd.itertuples(index=False):
+            vi = index.get(str(row.user_steamid))
+            if vi is None:
+                continue
+            alive.discard(vi)
+            if clutch:
+                continue
+            for team in (2, 3):
+                mine = [i for i in alive if side.get(i) == team]
+                enemies = [i for i in alive if side.get(i) not in (team, None)]
+                if len(mine) == 1 and len(enemies) >= 1:
+                    clutch = (mine[0], len(enemies), int(row.tick))
+                    break
+
+        if clutch:
+            player, vs, tick = clutch
+            if side_name.get(side.get(player)) == r["winner"]:
+                result.append({
+                    "round": ri,
+                    "tick": tick,
+                    "type": f"1v{vs}",
+                    "player": player,
+                    "detail": f"клатч 1 против {vs}",
+                })
+
+    # Сначала самые крутые: ACE, 1v5 ... потом по раунду
+    order = {"ACE": 0, "1v5": 1, "1v4": 2, "4K": 3, "1v3": 4, "3K": 5, "1v2": 6, "1v1": 7}
+    result.sort(key=lambda h: (order.get(h["type"], 9), h["round"]))
+    return result
+
+
+def is_missing(v) -> bool:
+    """Пустое значение (None или NaN)."""
+    if v is None:
+        return True
+    try:
+        return bool(pd.isna(v))
+    except (TypeError, ValueError):
+        return False
+
+
+def num(v) -> int:
+    """Число или 0, если значения нет."""
+    return 0 if is_missing(v) else int(v)
+
+
+# Какие буквы ставить для гранат в таблице игроков
+NADE_CODES = [
+    ("smoke", "s"),
+    ("flash", "f"),
+    ("high explosive", "h"), ("hegrenade", "h"), ("he grenade", "h"),
+    ("molotov", "m"), ("incendiary", "m"),
+    ("decoy", "d"),
+]
+
+
+def parse_inventory(inv) -> tuple[str, int]:
+    """Из списка предметов игрока делаем строку гранат (например 'sfh') и флаг «несёт бомбу»."""
+    if inv is None or isinstance(inv, float):
+        return "", 0
+    nades, has_bomb = "", 0
+    for item in list(inv):
+        name = str(item).lower()
+        if "c4" in name:
+            has_bomb = 1
+            continue
+        for key, code in NADE_CODES:
+            if key in name:
+                nades += code
+                break
+    return "".join(sorted(nades)), has_bomb
+
+
+def grenade_events(parser: DemoParser) -> list[dict]:
+    """Смоки и молотовы (с началом и концом действия), флешки и HE (короткая вспышка)."""
+    def safe(event):
+        try:
+            return drop_warmup(parser.parse_event(event, other=["is_warmup_period"]))
+        except Exception:
+            return pd.DataFrame()
+
+    result = []
+    # Смоки и молотовы: связываем начало и конец по entityid гранаты
+    for start_ev, end_ev, kind, default_len in (
+        ("smokegrenade_detonate", "smokegrenade_expired", "smoke", 18 * 64),
+        ("inferno_startburn", "inferno_expire", "molotov", 7 * 64),
+    ):
+        starts, ends = safe(start_ev), safe(end_ev)
+        end_by_id = {}
+        if not ends.empty and "entityid" in ends.columns:
+            for row in ends.to_dict("records"):
+                end_by_id.setdefault(row["entityid"], []).append(int(row["tick"]))
+        for row in starts.to_dict("records"):
+            x, y = row.get("x"), row.get("y")
+            if is_missing(x) or is_missing(y):
+                continue
+            t0 = int(row["tick"])
+            later = [t for t in end_by_id.get(row.get("entityid"), []) if t > t0]
+            result.append({
+                "type": kind,
+                "start": t0,
+                "end": min(later) if later else t0 + default_len,
+                "x": round(float(x)),
+                "y": round(float(y)),
+            })
+
+    # Флешки и HE — показываем вспышку на полсекунды
+    for event, kind in (("flashbang_detonate", "flash"), ("hegrenade_detonate", "he")):
+        for row in safe(event).to_dict("records"):
+            x, y = row.get("x"), row.get("y")
+            if is_missing(x) or is_missing(y):
+                continue
+            t0 = int(row["tick"])
+            result.append({"type": kind, "start": t0, "end": t0 + 32,
+                           "x": round(float(x)), "y": round(float(y))})
+    return result
+
+
+# Оружие, выстрелы из которого не рисуем (ножи, гранаты, бомба)
+NOT_GUNS = ("knife", "bayonet", "grenade", "flashbang", "smoke", "molotov", "incendiary", "decoy", "c4", "taser")
+
+
+def shot_events(parser: DemoParser) -> list[list]:
+    """Все выстрелы: тик, позиция стрелка, угол и его команда."""
+    try:
+        df = drop_warmup(parser.parse_event("weapon_fire", player=["X", "Y", "yaw", "team_num"],
+                                            other=["is_warmup_period"]))
+    except Exception:
+        return []
+    shots = []
+    for row in df.to_dict("records"):
+        weapon = str(row.get("weapon", "")).lower()
+        if any(w in weapon for w in NOT_GUNS):
+            continue
+        x, y, yaw = row.get("user_X"), row.get("user_Y"), row.get("user_yaw")
+        if is_missing(x) or is_missing(y) or is_missing(yaw):
+            continue
+        shots.append([int(row["tick"]), round(float(x)), round(float(y)), round(float(yaw)), num(row.get("user_team_num"))])
+    return shots
 
 
 def bomb_events(parser: DemoParser) -> list[dict]:
@@ -231,7 +423,7 @@ def analyze_demo(demo_path: Path) -> dict:
         duels.setdefault(att, {})[vic] = int(n)
 
     # 2D-реплей: игроки в том же порядке, что и в player_rows
-    replay = build_replay(parser, rounds, [p["steamid"] for p in player_rows], kills)
+    replay = build_replay(parser, rounds, [p["steamid"] for p in player_rows], kills, deaths)
 
     return {
         "map": header.get("map_name", "?"),
