@@ -1,13 +1,27 @@
 # Nuga CS Demo
 
-Анализатор демок CS2 с FACEIT: статистика игроков и матрица дуэлей.
-CS2 demo analyzer: player stats (K/D, ADR, HS%) and a duel matrix.
+Анализатор демок CS2 с FACEIT: статистика, матрица дуэлей, хайлайты и 2D-реплей раундов.
+CS2 demo analyzer: player stats, duel matrix, highlights and 2D round replays on the map radar.
 
 ## Возможности
 
-- Загрузка демки `.dem`, `.dem.gz` или `.dem.zst` через сайт
-- Статистика по командам: убийства, смерти, ассисты, K/D, HS%, ADR
+### Статистика
+- Загрузка демки `.dem`, `.dem.gz` или `.dem.zst` прямо через сайт
+- Таблица по командам: убийства, смерти, ассисты, K/D, HS%, ADR
 - Матрица дуэлей: кто кого сколько раз убил
+
+### Хайлайты
+- Автоматический поиск ярких моментов: **ACE**, **4K**, **3K**
+- Выигранные клатчи **1v1 – 1v5**
+- Клик по хайлайту открывает реплей за 3 секунды до момента
+
+### 2D-реплей
+- Движение всех игроков по радару карты, плавная анимация
+- Направление взгляда (конус обзора), HP, оружие в руках
+- Смоки, молотовы, флешки, HE и трассеры выстрелов
+- Бомба: установка, разминирование, взрыв
+- Таблица команд в реальном времени: деньги, гранаты, оружие, кто несёт C4
+- Счёт матча по раундам, киллфид, скорость 1x–8x и перемотка
 
 ## Запуск
 
@@ -15,17 +29,51 @@ CS2 demo analyzer: player stats (K/D, ADR, HS%) and a duel matrix.
 python -m venv .venv
 .venv\Scripts\activate        # Windows
 pip install -r requirements.txt
+```
+
+Радары карт (один раз). Это файлы из игры, поэтому в репозиторий они не входят:
+
+```bash
+pip install awpy
+awpy get
+mkdir static\maps
+Copy-Item "$HOME\.awpy\*\radars\*.png" static\maps\
+Copy-Item "$HOME\.awpy\*\map_data.json" static\maps\
+```
+
+Запуск сервера:
+
+```bash
 uvicorn app:app --reload
 ```
 
 Откройте http://127.0.0.1:8000 и загрузите демку.
 
+Скрипт для терминала без сайта:
+
+```bash
+python analyze.py match.dem.zst
+```
+
+## Структура
+
+| Файл | Что делает |
+|---|---|
+| `analyzer.py` | Разбор демки: статистика, раунды, реплей, гранаты, хайлайты |
+| `app.py` | Веб-сервер на FastAPI: принимает демку и отдаёт результат |
+| `static/index.html` | Страница сайта: таблицы, хайлайты и 2D-реплей |
+| `analyze.py` | Первая версия анализа для терминала |
+
 ## Технологии
 
-Python, FastAPI, [demoparser2](https://github.com/LaihoE/demoparser), pandas.
+Python, FastAPI, [demoparser2](https://github.com/LaihoE/demoparser), pandas, Canvas, радары из [awpy](https://github.com/pnxenopoulos/awpy).
 
 ## Планы
 
-- [ ] 2D-реплей раундов на радаре карты
-- [ ] KAST, entry-киллы, клатчи
-- [ ] Вход через FACEIT и автоимпорт матчей
+- [x] Статистика игроков и матрица дуэлей
+- [x] 2D-реплей раундов на радаре
+- [x] Хайлайты: мульти-киллы и клатчи
+- [ ] Поиск игрока FACEIT по нику и список его матчей
+- [ ] KAST, entry-киллы, рейтинг
+- [ ] Автоимпорт демок через FACEIT Downloads API
+- [ ] Сайт в интернете
