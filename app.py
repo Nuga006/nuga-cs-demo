@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from analyzer import analyze_demo, prepare_demo
 
@@ -18,6 +19,9 @@ UPLOADS.mkdir(exist_ok=True)
 ALLOWED = (".dem.zst", ".dem.gz", ".dem")
 
 app = FastAPI(title="Nuga CS Demo")
+
+# Раздаём файлы из папки static (картинки радаров и т.п.) по адресу /static/...
+app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 
 @app.get("/")

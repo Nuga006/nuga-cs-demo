@@ -8,6 +8,10 @@ from pathlib import Path
 import pandas as pd
 from demoparser2 import DemoParser
 
+# Каждый какой тик сохранять позиции для реплея.
+# Демки FACEIT идут с частотой 64 тика в секунду, значит шаг 8 = 8 кадров в секунду.
+REPLAY_STEP = 8
+
 
 def prepare_demo(path: Path) -> Path:
     """Если файл сжат (.gz или .zst), распаковываем его рядом в .dem и возвращаем новый путь."""
@@ -35,15 +39,110 @@ def drop_warmup(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["is_warmup_period"].fillna(False).astype(bool)]
 
 
+def normalize_side(value) -> str:
+    """Победитель раунда может прийти как 2/3 или как 'T'/'CT' — приводим к 'T' или 'CT'."""
+    v = str(value).strip().upper()
+    if v in ("2", "T", "TERRORIST"):
+        return "T"
+    if v in ("3", "CT"):
+        return "CT"
+    return ""
+
+
+def build_rounds(parser: DemoParser) -> list[dict]:
+    """Находим начало (конец закупки) и конец каждого раунда."""
+    freeze = drop_warmup(parser.parse_event("round_freeze_end", other=["is_warmup_period"]))
+    ends = drop_warmup(parser.parse_event("round_end", other=["is_warmup_period", "total_rounds_played"]))
+    if freeze.empty or ends.empty:
+        return []
+
+    # Оставляем только настоящие раунды — где победила T или CT.
+    # Служебные события (рестарт после разминки и т.п.) победителя не имеют.
+    ends = ends.copy()
+    ends["side"] = ends["winner"].map(normalize_side) if "winner" in ends.columns else ""
+    ends = ends[ends["side"] != ""]
+
+    # Если конец одного и того же раунда записан дважды — оставляем первый
+    if "total_rounds_played" in ends.columns:
+        ends = ends.sort_values("tick").drop_duplicates(subset="total_rounds_played", keep="first")
+
+    starts = sorted(int(t) for t in freeze["tick"])
+    rounds = []
+    for _, e in ends.sort_values("tick").iterrows():
+        end_tick = int(e["tick"])
+        before = [s for s in starts if s < end_tick]
+        if not before:
+            continue
+        start_tick = max(before)
+        # Защита от дублей: раунд должен начинаться после конца предыдущего
+        if rounds and start_tick < rounds[-1]["end"]:
+            continue
+        rounds.append({
+            "start": start_tick,
+            "end": end_tick,
+            "winner": e["side"],
+        })
+    return rounds
+
+
+def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str], kills: pd.DataFrame) -> dict:
+    """Собираем позиции игроков по кадрам для каждого раунда."""
+    index = {sid: i for i, sid in enumerate(player_ids)}
+
+    # Список нужных тиков: внутри раундов с шагом REPLAY_STEP
+    wanted = []
+    for r in rounds:
+        wanted.extend(range(r["start"], r["end"] + 1, REPLAY_STEP))
+    if not wanted:
+        return {"step": REPLAY_STEP, "rounds": []}
+
+    ticks_df = parser.parse_ticks(["X", "Y", "team_num", "is_alive"], ticks=wanted)
+    ticks_df["steamid"] = ticks_df["steamid"].astype(str)
+
+    # by_tick[тик] = список позиций всех игроков в этот момент
+    by_tick: dict[int, list] = {}
+    for tick, sid, x, y, team, alive in ticks_df[["tick", "steamid", "X", "Y", "team_num", "is_alive"]].itertuples(index=False):
+        i = index.get(sid)
+        if i is None or pd.isna(x) or pd.isna(y):
+            continue
+        frame = by_tick.setdefault(int(tick), [None] * len(player_ids))
+        # [x, y, жив ли (1/0), команда (2 = T, 3 = CT)]
+        frame[i] = [round(float(x)), round(float(y)), 1 if alive else 0, int(team) if not pd.isna(team) else 0]
+
+    replay_rounds = []
+    for r in rounds:
+        ticks = [t for t in range(r["start"], r["end"] + 1, REPLAY_STEP) if t in by_tick]
+        round_kills = kills[(kills["tick"] >= r["start"]) & (kills["tick"] <= r["end"])]
+        replay_rounds.append({
+            **r,
+            "ticks": ticks,
+            "frames": [by_tick[t] for t in ticks],
+            "kills": [
+                {
+                    "tick": int(k.tick),
+                    "attacker": str(k.attacker_name),
+                    "victim": str(k.user_name),
+                    "weapon": str(k.weapon),
+                    "headshot": bool(k.headshot),
+                    "x": round(float(k.user_X)) if not pd.isna(k.user_X) else None,
+                    "y": round(float(k.user_Y)) if not pd.isna(k.user_Y) else None,
+                }
+                for k in round_kills.itertuples(index=False)
+            ],
+        })
+
+    return {"step": REPLAY_STEP, "rounds": replay_rounds}
+
+
 def analyze_demo(demo_path: Path) -> dict:
     """Разбирает демку и возвращает словарь, который сервер отдаст сайту в виде JSON."""
     parser = DemoParser(str(demo_path))
     header = parser.parse_header()
 
-    # События из демки
-    deaths = drop_warmup(parser.parse_event("player_death", player=["team_num"], other=["is_warmup_period"]))
+    # События из демки. X и Y — координаты на карте (нужны для отметок смертей в реплее).
+    deaths = drop_warmup(parser.parse_event("player_death", player=["team_num", "X", "Y"], other=["is_warmup_period"]))
     hurts = drop_warmup(parser.parse_event("player_hurt", player=["team_num"], other=["is_warmup_period"]))
-    rounds = drop_warmup(parser.parse_event("round_end", other=["is_warmup_period"]))
+    rounds = build_rounds(parser)
     num_rounds = max(len(rounds), 1)
 
     # SteamID всегда как строки
@@ -96,9 +195,13 @@ def analyze_demo(demo_path: Path) -> dict:
     for (att, vic), n in kills.groupby(["attacker_steamid", "user_steamid"]).size().items():
         duels.setdefault(att, {})[vic] = int(n)
 
+    # 2D-реплей: игроки в том же порядке, что и в player_rows
+    replay = build_replay(parser, rounds, [p["steamid"] for p in player_rows], kills)
+
     return {
         "map": header.get("map_name", "?"),
         "rounds": len(rounds),
         "players": player_rows,
         "duels": duels,
+        "replay": replay,
     }

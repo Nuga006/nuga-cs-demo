@@ -9,6 +9,7 @@
     --bg: #0f1115; --panel: #181b22; --line: #262a33;
     --text: #e8e9ec; --muted: #8b909c; --accent: #ff5a1f;
     --win: #2fb36b; --lose: #e0474c;
+    --t: #e8b14a; --ct: #5b9dff;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -48,12 +49,39 @@
   .duel td { text-align: center; min-width: 70px; }
   .duel th { text-align: center; }
   .cell { border-radius: 6px; padding: 4px 6px; display: inline-block; min-width: 52px; }
+
+  /* --- 2D-реплей --- */
+  .rounds { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .rbtn { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+          padding: 4px 0; width: 38px; cursor: pointer; font: inherit; font-size: 13px; border-bottom-width: 3px; }
+  .rbtn.t { border-bottom-color: var(--t); } .rbtn.ct { border-bottom-color: var(--ct); }
+  .rbtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .replay { display: grid; grid-template-columns: minmax(0, 640px) 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 820px) { .replay { grid-template-columns: 1fr; } }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  canvas { width: 100%; aspect-ratio: 1; display: block; border-radius: 8px; background: #0b0d11; }
+  .controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .controls button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 6px 14px;
+                     font: inherit; cursor: pointer; min-width: 74px; }
+  .controls select { background: var(--bg); color: var(--text); border: 1px solid var(--line);
+                     border-radius: 8px; padding: 5px; font: inherit; }
+  .controls input[type=range] { flex: 1; accent-color: var(--accent); }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 44px; text-align: right; }
+
+  .feed { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 120px; }
+  .feed h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+  .kill { display: flex; gap: 6px; align-items: baseline; padding: 4px 0; font-size: 14px; flex-wrap: wrap; }
+  .kill .w { color: var(--muted); font-size: 12px; }
+  .kill .tm { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .tc { color: var(--t); } .ctc { color: var(--ct); }
+  .note { color: var(--muted); font-size: 13px; margin-top: 8px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Nuga <span>CS</span> Demo</h1>
-  <div class="sub">Загрузите демку CS2 с FACEIT — получите статистику и матрицу дуэлей.</div>
+  <div class="sub">Загрузите демку CS2 с FACEIT — получите статистику, матрицу дуэлей и 2D-реплей.</div>
 
   <label class="drop" id="drop">
     <input type="file" id="file" accept=".dem,.gz,.zst">
@@ -65,6 +93,31 @@
 
   <div class="result" id="result">
     <div class="meta" id="meta"></div>
+
+    <h2>2D-реплей</h2>
+    <div class="rounds" id="rounds"></div>
+    <div class="replay">
+      <div class="stage">
+        <canvas id="canvas" width="1024" height="1024"></canvas>
+        <div class="controls">
+          <button id="play">▶ Play</button>
+          <select id="speed">
+            <option value="1">1x</option>
+            <option value="2" selected>2x</option>
+            <option value="4">4x</option>
+            <option value="8">8x</option>
+          </select>
+          <input type="range" id="seek" min="0" max="0" step="0.01" value="0">
+          <span class="time" id="time">0:00</span>
+        </div>
+        <div class="note" id="radarNote"></div>
+      </div>
+      <div class="feed">
+        <h3>Киллфид раунда</h3>
+        <div id="feed"></div>
+      </div>
+    </div>
+
     <h2>Статистика игроков</h2>
     <div class="scroll"><table id="stats"></table></div>
     <h2>Матрица дуэлей</h2>
@@ -86,7 +139,7 @@ function setStatus(text, isError = false) {
   statusEl.className = "status" + (isError ? " err" : "");
 }
 
-// Перетаскивание файла
+// ---------- Загрузка файла ----------
 drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));
 drop.addEventListener("drop", (e) => {
@@ -95,9 +148,9 @@ drop.addEventListener("drop", (e) => {
 });
 fileInput.addEventListener("change", () => { if (fileInput.files[0]) upload(fileInput.files[0]); });
 
-// Отправка файла на сервер с полоской прогресса
 function upload(file) {
   $("result").style.display = "none";
+  stop();
   bar.style.display = "block";
   bar.firstElementChild.style.width = "0";
   setStatus(`Загружаем ${file.name}...`);
@@ -125,6 +178,7 @@ function upload(file) {
   xhr.send(form);
 }
 
+// ---------- Таблицы ----------
 function render(data) {
   const teams = [...new Set(data.players.map((p) => p.team))].sort();
   const byTeam = (t) => data.players.filter((p) => p.team === t).sort((a, b) => b.kills - a.kills);
@@ -134,7 +188,6 @@ function render(data) {
     `<div class="chip">Карта: <b>${esc(data.map)}</b></div>` +
     `<div class="chip">Раундов: <b>${data.rounds}</b></div>`;
 
-  // Таблица статистики
   let html = "<tr><th>Игрок</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>HS%</th><th>ADR</th></tr>";
   teams.forEach((t, i) => {
     html += `<tr class="team-head"><td colspan="7">${teamName(i)}</td></tr>`;
@@ -146,25 +199,235 @@ function render(data) {
   });
   $("stats").innerHTML = html;
 
-  // Матрица дуэлей: строки — команда 1, столбцы — команда 2
-  if (teams.length < 2) { $("duels").innerHTML = ""; return; }
-  const rows = byTeam(teams[0]), cols = byTeam(teams[1]);
-  const count = (a, v) => (data.duels[a.steamid] || {})[v.steamid] || 0;
-
-  let d = "<tr><th></th>" + cols.map((c) => `<th>${esc(c.name)}</th>`).join("") + "</tr>";
-  for (const r of rows) {
-    d += `<tr><td>${esc(r.name)}</td>`;
-    for (const c of cols) {
-      const won = count(r, c), lost = count(c, r);
-      // Зелёный — строка выиграла дуэль, красный — проиграла
-      const color = won > lost ? "rgba(47,179,107,.25)" : won < lost ? "rgba(224,71,76,.25)" : "transparent";
-      d += `<td><span class="cell" style="background:${color}">${won} : ${lost}</span></td>`;
+  if (teams.length >= 2) {
+    const rows = byTeam(teams[0]), cols = byTeam(teams[1]);
+    const count = (a, v) => (data.duels[a.steamid] || {})[v.steamid] || 0;
+    let d = "<tr><th></th>" + cols.map((c) => `<th>${esc(c.name)}</th>`).join("") + "</tr>";
+    for (const r of rows) {
+      d += `<tr><td>${esc(r.name)}</td>`;
+      for (const c of cols) {
+        const won = count(r, c), lost = count(c, r);
+        const color = won > lost ? "rgba(47,179,107,.25)" : won < lost ? "rgba(224,71,76,.25)" : "transparent";
+        d += `<td><span class="cell" style="background:${color}">${won} : ${lost}</span></td>`;
+      }
+      d += "</tr>";
     }
-    d += "</tr>";
+    $("duels").innerHTML = d;
+  } else {
+    $("duels").innerHTML = "";
   }
-  $("duels").innerHTML = d;
+
   $("result").style.display = "block";
+  setupReplay(data);
 }
+
+// ---------- 2D-реплей ----------
+
+// Параметры радаров: где на картинке 1024x1024 находится точка (0,0) карты и масштаб.
+// Картинку радара кладём в static/maps/<название_карты>.png
+const MAPS = {
+  de_ancient:  { x: -2953, y: 2164, scale: 5 },
+  de_anubis:   { x: -2796, y: 3328, scale: 5.22 },
+  de_dust2:    { x: -2476, y: 3239, scale: 4.4 },
+  de_inferno:  { x: -2087, y: 3870, scale: 4.9 },
+  de_mirage:   { x: -3230, y: 1713, scale: 5 },
+  de_nuke:     { x: -3453, y: 2887, scale: 7 },
+  de_overpass: { x: -4831, y: 1781, scale: 5.2 },
+  de_train:    { x: -2308, y: 2078, scale: 4.082077 },
+  de_vertigo:  { x: -3168, y: 1762, scale: 4 },
+};
+const TICKRATE = 64;
+
+const canvas = $("canvas"), ctx = canvas.getContext("2d");
+const R = {
+  data: null, round: 0, pos: 0, playing: false, lastTs: 0,
+  radar: null, bounds: null,
+};
+
+const teamColor = (team) => (team === 2 ? "#e8b14a" : team === 3 ? "#5b9dff" : "#999");
+const winnerSide = (w) => {
+  w = String(w).toUpperCase();
+  return w === "2" || w === "T" ? "t" : w === "3" || w === "CT" ? "ct" : "";
+};
+const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+
+function setupReplay(data) {
+  R.data = data;
+  R.radar = null;
+  const rounds = data.replay?.rounds || [];
+
+  // Кнопки раундов (снизу цвет победителя: жёлтый — T, синий — CT)
+  $("rounds").innerHTML = rounds.map((r, i) =>
+    `<button class="rbtn ${winnerSide(r.winner)}" data-i="${i}">${i + 1}</button>`).join("");
+  $("rounds").querySelectorAll(".rbtn").forEach((b) =>
+    b.addEventListener("click", () => selectRound(+b.dataset.i)));
+
+  // Границы карты по всем позициям — нужны, если нет картинки радара
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const r of rounds) for (const f of r.frames) for (const p of f) {
+    if (!p) continue;
+    minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
+    minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
+  }
+  R.bounds = { minX, maxX, minY, maxY };
+
+  // Пробуем загрузить картинку радара
+  const map = data.map;
+  $("radarNote").textContent = "";
+  loadMapData().then(() => loadRadar(map));
+  if (rounds.length) selectRound(0);
+}
+
+// Точные параметры карт из static/maps/map_data.json (файл из awpy).
+// Если файла нет — остаются примерные значения из MAPS выше.
+let mapDataLoaded = false;
+async function loadMapData() {
+  if (mapDataLoaded) return;
+  mapDataLoaded = true;
+  try {
+    const res = await fetch("/static/maps/map_data.json");
+    if (!res.ok) return;
+    const json = await res.json();
+    for (const [name, m] of Object.entries(json)) {
+      if (m && m.pos_x != null && m.pos_y != null && m.scale != null) {
+        MAPS[name] = { x: Number(m.pos_x), y: Number(m.pos_y), scale: Number(m.scale) };
+      }
+    }
+  } catch { /* файла нет — ничего страшного */ }
+}
+
+function loadRadar(map) {
+  if (MAPS[map]) {
+    const img = new Image();
+    img.onload = () => { R.radar = img; draw(); };
+    img.onerror = () => {
+      $("radarNote").textContent = `Нет картинки радара: положите её в static/maps/${map}.png`;
+    };
+    img.src = `/static/maps/${map}.png`;
+  } else {
+    $("radarNote").textContent = `Для карты ${map} пока нет настроек радара — показываем без фона.`;
+  }
+}
+
+function selectRound(i) {
+  stop();
+  R.round = i;
+  R.pos = 0;
+  const r = R.data.replay.rounds[i];
+  $("seek").max = Math.max(r.frames.length - 1, 0);
+  $("seek").value = 0;
+  $("rounds").querySelectorAll(".rbtn").forEach((b, j) => b.classList.toggle("active", j === i));
+  draw();
+}
+
+// Перевод координат игры в пиксели на холсте
+function toCanvas(x, y) {
+  const m = MAPS[R.data.map];
+  if (R.radar && m) {
+    const k = canvas.width / 1024;
+    return [((x - m.x) / m.scale) * k, ((m.y - y) / m.scale) * k];
+  }
+  // Без радара: вписываем все позиции в квадрат с отступами
+  const b = R.bounds, pad = 60;
+  const size = Math.max(b.maxX - b.minX, b.maxY - b.minY) || 1;
+  const s = (canvas.width - pad * 2) / size;
+  const offX = (canvas.width - (b.maxX - b.minX) * s) / 2;
+  const offY = (canvas.height - (b.maxY - b.minY) * s) / 2;
+  return [offX + (x - b.minX) * s, offY + (b.maxY - y) * s];
+}
+
+function draw() {
+  const r = R.data?.replay?.rounds?.[R.round];
+  ctx.fillStyle = "#0b0d11";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!r || !r.frames.length) return;
+
+  if (R.radar) ctx.drawImage(R.radar, 0, 0, canvas.width, canvas.height);
+
+  // Плавное движение: смешиваем два соседних кадра
+  const a = Math.floor(R.pos), b = Math.min(a + 1, r.frames.length - 1), t = R.pos - a;
+  const fa = r.frames[a], fb = r.frames[b];
+  const curTick = r.ticks[a] + t * (r.ticks[b] - r.ticks[a]);
+
+  ctx.font = "bold 20px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  R.data.players.forEach((pl, i) => {
+    const p = fa[i];
+    if (!p) return;
+    const q = fb[i] && fb[i][2] ? fb[i] : p;
+    const [x, y] = toCanvas(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t);
+    const color = teamColor(p[3]);
+
+    if (p[2]) {
+      // Живой игрок — кружок и ник
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = "#0b0d11"; ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.fillText(pl.name, x, y - 18);
+    } else {
+      // Мёртвый — крестик на месте смерти
+      ctx.strokeStyle = color; ctx.globalAlpha = 0.7; ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x - 9, y - 9); ctx.lineTo(x + 9, y + 9);
+      ctx.moveTo(x + 9, y - 9); ctx.lineTo(x - 9, y + 9);
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+  });
+
+  // Время раунда и киллфид
+  $("time").textContent = fmtTime((curTick - r.start) / TICKRATE);
+  $("seek").value = R.pos;
+  renderFeed(r, curTick);
+}
+
+function renderFeed(r, curTick) {
+  const team = {};
+  // Команда игрока в текущем кадре — чтобы покрасить ники в киллфиде
+  const frame = r.frames[Math.floor(R.pos)];
+  R.data.players.forEach((pl, i) => { if (frame[i]) team[pl.name] = frame[i][3]; });
+  const cls = (name) => (team[name] === 2 ? "tc" : team[name] === 3 ? "ctc" : "");
+
+  const shown = r.kills.filter((k) => k.tick <= curTick);
+  $("feed").innerHTML = shown.length
+    ? shown.map((k) =>
+        `<div class="kill"><span class="${cls(k.attacker)}">${esc(k.attacker)}</span>` +
+        `<span class="w">[${esc(k.weapon)}${k.headshot ? " · HS" : ""}]</span>` +
+        `<span class="${cls(k.victim)}">${esc(k.victim)}</span>` +
+        `<span class="tm">${fmtTime((k.tick - r.start) / TICKRATE)}</span></div>`).join("")
+    : `<div class="note">Пока никого не убили</div>`;
+}
+
+// ---------- Проигрывание ----------
+function play() {
+  const r = R.data?.replay?.rounds?.[R.round];
+  if (!r) return;
+  if (R.pos >= r.frames.length - 1) R.pos = 0;   // если раунд закончился — начать заново
+  R.playing = true; R.lastTs = 0;
+  $("play").textContent = "❚❚ Pause";
+  requestAnimationFrame(tick);
+}
+function stop() {
+  R.playing = false;
+  $("play").textContent = "▶ Play";
+}
+function tick(ts) {
+  if (!R.playing) return;
+  if (R.lastTs) {
+    const dt = (ts - R.lastTs) / 1000;
+    const fps = TICKRATE / R.data.replay.step;          // кадров в секунду в реальном времени
+    R.pos += dt * fps * Number($("speed").value);
+    const last = R.data.replay.rounds[R.round].frames.length - 1;
+    if (R.pos >= last) { R.pos = last; draw(); return stop(); }
+  }
+  R.lastTs = ts;
+  draw();
+  requestAnimationFrame(tick);
+}
+
+$("play").addEventListener("click", () => (R.playing ? stop() : play()));
+$("seek").addEventListener("input", (e) => { R.pos = Number(e.target.value); draw(); });
 </script>
 </body>
 </html>
