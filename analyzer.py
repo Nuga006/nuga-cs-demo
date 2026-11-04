@@ -96,18 +96,32 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str], 
     if not wanted:
         return {"step": REPLAY_STEP, "rounds": []}
 
-    ticks_df = parser.parse_ticks(["X", "Y", "team_num", "is_alive"], ticks=wanted)
+    props = ["X", "Y", "team_num", "is_alive", "health", "active_weapon_name"]
+    ticks_df = parser.parse_ticks(props, ticks=wanted)
     ticks_df["steamid"] = ticks_df["steamid"].astype(str)
+    for col in props:
+        if col not in ticks_df.columns:      # на случай, если в демке нет какого-то поля
+            ticks_df[col] = None
 
     # by_tick[тик] = список позиций всех игроков в этот момент
     by_tick: dict[int, list] = {}
-    for tick, sid, x, y, team, alive in ticks_df[["tick", "steamid", "X", "Y", "team_num", "is_alive"]].itertuples(index=False):
+    cols = ["tick", "steamid", "X", "Y", "team_num", "is_alive", "health", "active_weapon_name"]
+    for tick, sid, x, y, team, alive, hp, weapon in ticks_df[cols].itertuples(index=False):
         i = index.get(sid)
         if i is None or pd.isna(x) or pd.isna(y):
             continue
         frame = by_tick.setdefault(int(tick), [None] * len(player_ids))
-        # [x, y, жив ли (1/0), команда (2 = T, 3 = CT)]
-        frame[i] = [round(float(x)), round(float(y)), 1 if alive else 0, int(team) if not pd.isna(team) else 0]
+        # [x, y, жив ли (1/0), команда (2 = T, 3 = CT), HP, оружие в руках]
+        frame[i] = [
+            round(float(x)),
+            round(float(y)),
+            1 if alive else 0,
+            int(team) if not pd.isna(team) else 0,
+            int(hp) if not pd.isna(hp) else 0,
+            str(weapon) if isinstance(weapon, str) else "",
+        ]
+
+    bomb = bomb_events(parser)
 
     replay_rounds = []
     for r in rounds:
@@ -129,9 +143,30 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str], 
                 }
                 for k in round_kills.itertuples(index=False)
             ],
+            "bomb": [b for b in bomb if r["start"] <= b["tick"] <= r["end"] + 64 * 3],
         })
 
     return {"step": REPLAY_STEP, "rounds": replay_rounds}
+
+
+def bomb_events(parser: DemoParser) -> list[dict]:
+    """События с бомбой: установка, разминирование, взрыв."""
+    result = []
+    for event, kind in (("bomb_planted", "planted"), ("bomb_defused", "defused"), ("bomb_exploded", "exploded")):
+        try:
+            df = drop_warmup(parser.parse_event(event, player=["X", "Y"], other=["is_warmup_period"]))
+        except Exception:
+            continue  # такого события в демке нет
+        for row in df.to_dict("records"):
+            x, y = row.get("user_X"), row.get("user_Y")
+            result.append({
+                "type": kind,
+                "tick": int(row["tick"]),
+                "player": str(row.get("user_name") or ""),
+                "x": round(float(x)) if x is not None and not pd.isna(x) else None,
+                "y": round(float(y)) if y is not None and not pd.isna(y) else None,
+            })
+    return sorted(result, key=lambda b: b["tick"])
 
 
 def analyze_demo(demo_path: Path) -> dict:

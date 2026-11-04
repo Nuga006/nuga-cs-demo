@@ -76,6 +76,15 @@
   .kill .tm { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
   .tc { color: var(--t); } .ctc { color: var(--ct); }
   .note { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .kill.bomb { color: var(--muted); font-style: italic; }
+
+  .score { display: flex; align-items: center; justify-content: center; gap: 16px;
+           background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+           padding: 10px 16px; margin-bottom: 12px; font-weight: 600; }
+  .score .num { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .score .sep { color: var(--muted); }
+  .score .lead { color: var(--win); }
+  .score .small { color: var(--muted); font-weight: 400; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -95,6 +104,7 @@
     <div class="meta" id="meta"></div>
 
     <h2>2D-реплей</h2>
+    <div class="score" id="score"></div>
     <div class="rounds" id="rounds"></div>
     <div class="replay">
       <div class="stage">
@@ -271,6 +281,19 @@ function setupReplay(data) {
   }
   R.bounds = { minX, maxX, minY, maxY };
 
+  // Кто выиграл каждый раунд: 0 — «Команда 1», 1 — «Команда 2».
+  // Команды меняются сторонами, поэтому смотрим, за какую сторону играла Команда 1 в этом раунде.
+  const teams = [...new Set(data.players.map((p) => p.team))].sort();
+  const teamOneIdx = data.players.map((p, i) => (p.team === teams[0] ? i : -1)).filter((i) => i >= 0);
+  R.roundWinners = rounds.map((r) => {
+    const f = r.frames[0] || [];
+    const i = teamOneIdx.find((j) => f[j]);
+    if (i === undefined) return -1;
+    const teamOneSide = f[i][3] === 2 ? "t" : "ct";
+    const w = winnerSide(r.winner);
+    return w ? (w === teamOneSide ? 0 : 1) : -1;
+  });
+
   // Пробуем загрузить картинку радара
   const map = data.map;
   $("radarNote").textContent = "";
@@ -317,7 +340,23 @@ function selectRound(i) {
   $("seek").max = Math.max(r.frames.length - 1, 0);
   $("seek").value = 0;
   $("rounds").querySelectorAll(".rbtn").forEach((b, j) => b.classList.toggle("active", j === i));
+  renderScore(i);
   draw();
+}
+
+// Счёт после выбранного раунда
+function renderScore(i) {
+  const won = [0, 0];
+  R.roundWinners.slice(0, i + 1).forEach((w) => { if (w >= 0) won[w]++; });
+  const total = [0, 0];
+  R.roundWinners.forEach((w) => { if (w >= 0) total[w]++; });
+  const cls = (a, b) => (a > b ? "num lead" : "num");
+  $("score").innerHTML =
+    `<span>Команда 1</span>` +
+    `<span class="${cls(won[0], won[1])}">${won[0]}</span><span class="sep">:</span>` +
+    `<span class="${cls(won[1], won[0])}">${won[1]}</span>` +
+    `<span>Команда 2</span>` +
+    `<span class="small">после ${i + 1}-го раунда · итог ${total[0]}:${total[1]}</span>`;
 }
 
 // Перевод координат игры в пиксели на холсте
@@ -349,6 +388,8 @@ function draw() {
   const fa = r.frames[a], fb = r.frames[b];
   const curTick = r.ticks[a] + t * (r.ticks[b] - r.ticks[a]);
 
+  drawBomb(r, curTick);
+
   ctx.font = "bold 20px system-ui, sans-serif";
   ctx.textAlign = "center";
   R.data.players.forEach((pl, i) => {
@@ -365,7 +406,23 @@ function draw() {
       ctx.fillStyle = color; ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = "#0b0d11"; ctx.stroke();
       ctx.fillStyle = "#fff";
+      ctx.font = "bold 20px system-ui, sans-serif";
       ctx.fillText(pl.name, x, y - 18);
+
+      // Полоска HP под игроком: зелёная → жёлтая → красная
+      const hp = Math.max(0, Math.min(100, p[4] ?? 100));
+      const w = 34, h = 5, bx = x - w / 2, by = y + 16;
+      ctx.fillStyle = "rgba(0,0,0,.7)";
+      ctx.fillRect(bx - 1, by - 1, w + 2, h + 2);
+      ctx.fillStyle = hp > 60 ? "#2fb36b" : hp > 25 ? "#e8b14a" : "#e0474c";
+      ctx.fillRect(bx, by, (w * hp) / 100, h);
+
+      // Оружие в руках
+      if (p[5]) {
+        ctx.font = "15px system-ui, sans-serif";
+        ctx.fillStyle = "rgba(232,233,236,.75)";
+        ctx.fillText(p[5], x, by + 20);
+      }
     } else {
       // Мёртвый — крестик на месте смерти
       ctx.strokeStyle = color; ctx.globalAlpha = 0.7; ctx.lineWidth = 4;
@@ -382,6 +439,31 @@ function draw() {
   renderFeed(r, curTick);
 }
 
+// Значок бомбы: красный — заложена, зелёный — разминирована, оранжевый взрыв — взорвалась
+function drawBomb(r, curTick) {
+  const events = (r.bomb || []).filter((b) => b.tick <= curTick);
+  const plant = events.find((b) => b.type === "planted");
+  if (!plant || plant.x == null) return;
+  const defused = events.some((b) => b.type === "defused");
+  const exploded = events.some((b) => b.type === "exploded");
+  const [x, y] = toCanvas(plant.x, plant.y);
+
+  if (exploded) {
+    ctx.beginPath();
+    ctx.arc(x, y, 40, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,90,31,.35)";
+    ctx.fill();
+  }
+  // Мигание, пока бомба тикает
+  const blink = !defused && !exploded && Math.floor(curTick / 32) % 2 === 0;
+  ctx.fillStyle = defused ? "#2fb36b" : blink ? "#ff3b30" : "#a3241c";
+  ctx.fillRect(x - 12, y - 9, 24, 18);
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 12px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("C4", x, y + 4);
+}
+
 function renderFeed(r, curTick) {
   const team = {};
   // Команда игрока в текущем кадре — чтобы покрасить ники в киллфиде
@@ -389,13 +471,22 @@ function renderFeed(r, curTick) {
   R.data.players.forEach((pl, i) => { if (frame[i]) team[pl.name] = frame[i][3]; });
   const cls = (name) => (team[name] === 2 ? "tc" : team[name] === 3 ? "ctc" : "");
 
-  const shown = r.kills.filter((k) => k.tick <= curTick);
-  $("feed").innerHTML = shown.length
-    ? shown.map((k) =>
-        `<div class="kill"><span class="${cls(k.attacker)}">${esc(k.attacker)}</span>` +
-        `<span class="w">[${esc(k.weapon)}${k.headshot ? " · HS" : ""}]</span>` +
-        `<span class="${cls(k.victim)}">${esc(k.victim)}</span>` +
-        `<span class="tm">${fmtTime((k.tick - r.start) / TICKRATE)}</span></div>`).join("")
+  const tm = (tick) => `<span class="tm">${fmtTime((tick - r.start) / TICKRATE)}</span>`;
+  const bombText = { planted: "заложил бомбу", defused: "разминировал бомбу", exploded: "Бомба взорвалась" };
+
+  // Убийства и события бомбы в одном списке по времени
+  const items = [
+    ...r.kills.map((k) => ({ tick: k.tick, html:
+      `<div class="kill"><span class="${cls(k.attacker)}">${esc(k.attacker)}</span>` +
+      `<span class="w">[${esc(k.weapon)}${k.headshot ? " · HS" : ""}]</span>` +
+      `<span class="${cls(k.victim)}">${esc(k.victim)}</span>${tm(k.tick)}</div>` })),
+    ...(r.bomb || []).map((b) => ({ tick: b.tick, html:
+      `<div class="kill bomb">💣 ${b.type === "exploded" ? "" : `<span class="${cls(b.player)}">${esc(b.player)}</span>`} ` +
+      `${bombText[b.type]}${tm(b.tick)}</div>` })),
+  ].filter((it) => it.tick <= curTick).sort((a, b) => a.tick - b.tick);
+
+  $("feed").innerHTML = items.length
+    ? items.map((it) => it.html).join("")
     : `<div class="note">Пока никого не убили</div>`;
 }
 
