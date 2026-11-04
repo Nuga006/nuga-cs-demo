@@ -78,6 +78,31 @@
   .note { color: var(--muted); font-size: 13px; margin-top: 8px; }
   .kill.bomb { color: var(--muted); font-style: italic; }
 
+  /* Поиск игрока FACEIT */
+  .search { display: flex; gap: 8px; margin-bottom: 16px; }
+  .search input { flex: 1; min-width: 0; background: var(--panel); color: var(--text); border: 1px solid var(--line);
+                  border-radius: 10px; padding: 10px 14px; font: inherit; }
+  .search input:focus { outline: none; border-color: var(--accent); }
+  .search button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 0 18px;
+                   font: inherit; font-weight: 600; cursor: pointer; }
+  .pcard { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .pcard img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; background: #2a2f3a; }
+  .pcard .nm { font-size: 18px; font-weight: 700; }
+  .pcard .lv { margin-left: auto; text-align: right; }
+  .pcard .lv b { font-size: 22px; color: var(--accent); }
+  .mlist { display: flex; flex-direction: column; gap: 6px; margin-bottom: 28px; }
+  .mrow { display: grid; grid-template-columns: 6px 110px 1fr 70px 60px 60px 90px; gap: 12px; align-items: center;
+          background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 8px 0;
+          font-size: 14px; overflow: hidden; }
+  .mrow .rs { align-self: stretch; }
+  .mrow .rs.w { background: var(--win); } .mrow .rs.l { background: var(--lose); } .mrow .rs.n { background: var(--line); }
+  .mrow .mp { font-weight: 600; } .mrow .dt { color: var(--muted); font-size: 12px; }
+  .mrow .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mrow a { color: var(--accent); text-decoration: none; text-align: right; font-weight: 600; }
+  .mrow a:hover { text-decoration: underline; }
+  @media (max-width: 700px) { .mrow { grid-template-columns: 6px 1fr 60px 70px; } .mrow .hide { display: none; } }
+
   /* Хайлайты */
   .hl { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; }
   .hcard { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; background: var(--panel);
@@ -124,6 +149,14 @@
   <h1>Nuga <span>CS</span> Demo</h1>
   <div class="sub">Загрузите демку CS2 с FACEIT — получите статистику, матрицу дуэлей и 2D-реплей.</div>
 
+  <h2 style="margin-top:0">Игрок FACEIT</h2>
+  <form class="search" id="search">
+    <input id="nick" placeholder="Введите ник на FACEIT, например Nuga_006" autocomplete="off">
+    <button type="submit">Найти</button>
+  </form>
+  <div id="player"></div>
+
+  <h2>Разбор демки</h2>
   <label class="drop" id="drop">
     <input type="file" id="file" accept=".dem,.gz,.zst">
     <div><b>Выберите файл</b> или перетащите его сюда</div>
@@ -185,6 +218,51 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.className = "status" + (isError ? " err" : "");
+}
+
+// ---------- Поиск игрока FACEIT ----------
+$("search").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nick = $("nick").value.trim();
+  if (!nick) return;
+  $("player").innerHTML = `<div class="note">Ищем ${esc(nick)}...</div>`;
+  try {
+    const res = await fetch(`/api/faceit/player?nickname=${encodeURIComponent(nick)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Ошибка");
+    renderPlayer(data);
+  } catch (err) {
+    $("player").innerHTML = `<div class="status err">${esc(err.message)}</div>`;
+  }
+});
+
+function renderPlayer(p) {
+  const date = (ts) => ts ? new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : "";
+  const mapName = (m) => (m || "?").replace(/^de_/, "").replace(/^./, (c) => c.toUpperCase());
+
+  const rows = p.matches.map((m) => {
+    const rs = m.won === true ? "w" : m.won === false ? "l" : "n";
+    return `<div class="mrow"><span class="rs ${rs}"></span>` +
+      `<span><div class="mp">${esc(mapName(m.map))}</div><div class="dt">${date(m.finished_at)}</div></span>` +
+      `<span class="num" style="text-align:left">${esc(m.score || "")}</span>` +
+      `<span class="num">${m.kills ?? "-"} / ${m.deaths ?? "-"}</span>` +
+      `<span class="num hide">${m.kd ?? ""}</span>` +
+      `<span class="num hide">${m.adr ? Math.round(m.adr) : ""}</span>` +
+      `<a href="${esc(m.url)}" target="_blank" rel="noopener">Комната ↗</a></div>`;
+  }).join("");
+
+  $("player").innerHTML =
+    `<div class="pcard">${p.avatar ? `<img src="${esc(p.avatar)}" alt="">` : `<img alt="">`}` +
+    `<div><div class="nm">${esc(p.nickname)}</div>` +
+    `<div class="note" style="margin:0">${p.country ? esc(p.country.toUpperCase()) + " · " : ""}` +
+    `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--muted)">профиль FACEIT ↗</a></div></div>` +
+    `<div class="lv"><div class="note" style="margin:0">Уровень ${p.level ?? "-"}</div><b>${p.elo ?? "-"}</b> ELO</div></div>` +
+    (rows
+      ? `<div class="note" style="margin:0 0 8px">Последние матчи. Чтобы разобрать матч: откройте «Комнату», нажмите «Watch demo» и загрузите файл ниже.</div>` +
+        `<div class="mrow" style="background:none;border:0;color:var(--muted);font-size:12px;padding-top:0;padding-bottom:0">` +
+        `<span></span><span>Карта</span><span>Счёт</span><span class="num">K / D</span><span class="num hide">K/D</span><span class="num hide">ADR</span><span></span></div>` +
+        `<div class="mlist">${rows}</div>`
+      : `<div class="note">Нет матчей CS2</div>`);
 }
 
 // ---------- Загрузка файла ----------
