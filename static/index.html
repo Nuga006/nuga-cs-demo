@@ -103,6 +103,24 @@
   .mrow a:hover { text-decoration: underline; }
   @media (max-width: 700px) { .mrow { grid-template-columns: 6px 1fr 60px 70px; } .mrow .hide { display: none; } }
 
+  /* Экономика */
+  .eco { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .eco-grid { display: grid; gap: 4px; align-items: end; min-width: max-content; }
+  .eco-name { font-weight: 600; font-size: 13px; padding-right: 10px; white-space: nowrap; align-self: center; }
+  .ecell { width: 52px; background: none; border: 1px solid transparent; border-radius: 8px; padding: 4px 2px;
+           cursor: pointer; color: var(--text); font: inherit; display: flex; flex-direction: column;
+           align-items: center; gap: 3px; }
+  .ecell:hover { border-color: var(--line); }
+  .ecell.cur { border-color: var(--accent); }
+  .ecell .bar { width: 22px; height: 64px; background: #1f232c; border-radius: 4px; display: flex; align-items: flex-end; overflow: hidden; }
+  .ecell .bar i { display: block; width: 100%; border-radius: 4px 4px 0 0; }
+  .ecell .v { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ecell .bt { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 0 4px; background: #2a2f3a; color: var(--muted); }
+  .ecell.won .bt { background: var(--win); color: #0f1115; }
+  .eco-rn { width: 52px; text-align: center; font-size: 12px; color: var(--muted); }
+  .eco-legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .eco-legend b { color: var(--text); }
+
   /* Хайлайты */
   .hl { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px;
         scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
@@ -201,6 +219,15 @@
           <h3>Киллфид раунда</h3>
           <div id="feed"></div>
         </div>
+      </div>
+    </div>
+
+    <h2>Экономика</h2>
+    <div class="eco"><div id="eco"></div>
+      <div class="eco-legend">
+        <span>Высота столбика — стоимость закупки команды</span>
+        <span><b>П</b> — пистолетка · <b>Э</b> — эко · <b>Ф</b> — форс · <b>FB</b> — фулл-бай</span>
+        <span>Зелёная метка — команда выиграла раунд</span>
       </div>
     </div>
 
@@ -425,6 +452,7 @@ function setupReplay(data) {
   });
 
   renderHighlights(data);
+  renderEconomy(data);
 
   // Пробуем загрузить картинку радара
   const map = data.map;
@@ -473,6 +501,7 @@ function selectRound(i) {
   $("seek").value = 0;
   $("rounds").querySelectorAll(".rbtn").forEach((b, j) => b.classList.toggle("active", j === i));
   renderScore(i);
+  document.querySelectorAll(".ecell").forEach((c) => c.classList.toggle("cur", +c.dataset.r === i));
   draw();
 }
 
@@ -579,6 +608,54 @@ function draw() {
   $("seek").value = R.pos;
   renderFeed(r, curTick);
   renderTeams(r, fa, curTick);
+}
+
+// Экономика: стоимость закупки каждой команды в каждом раунде
+function renderEconomy(data) {
+  const rounds = data.replay?.rounds || [];
+  const teams = [...new Set(data.players.map((p) => p.team))].sort();
+  const SNAP = 10 * TICKRATE / (data.replay?.step || 8);   // смотрим через 10 секунд после старта — закупка уже сделана
+
+  // eco[команда][раунд] = { value, side, type }
+  const eco = teams.map(() => []);
+  let maxValue = 1;
+  rounds.forEach((r, ri) => {
+    const f = r.frames[Math.min(SNAP, r.frames.length - 1)] || [];
+    teams.forEach((t, ti) => {
+      let value = 0, count = 0, side = 0;
+      data.players.forEach((p, i) => {
+        if (p.team !== t || !f[i]) return;
+        value += f[i][11] || 0; count++; side = f[i][3];
+      });
+      const avg = count ? value / count : 0;
+      // Пистолетки — 1-й раунд и 1-й раунд второй половины (13-й)
+      const type = ri === 0 || ri === 12 ? "П" : avg < 1500 ? "Э" : avg < 3800 ? "Ф" : "FB";
+      eco[ti][ri] = { value, side, type };
+      maxValue = Math.max(maxValue, value);
+    });
+  });
+
+  const short = (v) => (v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v));
+  const cols = rounds.length + 1;
+  let html = `<div class="eco-grid" style="grid-template-columns: auto repeat(${rounds.length}, 52px)">`;
+  teams.forEach((t, ti) => {
+    html += `<div class="eco-name">Команда ${ti + 1}</div>`;
+    rounds.forEach((r, ri) => {
+      const e = eco[ti][ri];
+      const won = R.roundWinners[ri] === ti;
+      const h = Math.round((e.value / maxValue) * 100);
+      const color = e.side === 2 ? "var(--t)" : e.side === 3 ? "var(--ct)" : "var(--muted)";
+      html += `<button class="ecell${won ? " won" : ""}" data-r="${ri}" title="Раунд ${ri + 1}: $${e.value}">` +
+        `<span class="bar"><i style="height:${h}%;background:${color}"></i></span>` +
+        `<span class="v">$${short(e.value)}</span><span class="bt">${e.type}</span></button>`;
+    });
+  });
+  html += `<div></div>` + rounds.map((_, ri) => `<div class="eco-rn">${ri + 1}</div>`).join("") + `</div>`;
+  $("eco").innerHTML = html;
+  $("eco").querySelectorAll(".ecell").forEach((c) => c.addEventListener("click", () => {
+    selectRound(+c.dataset.r);
+    document.querySelector(".replay").scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
 }
 
 // Карточки хайлайтов: клик — переход в реплей за 3 секунды до момента

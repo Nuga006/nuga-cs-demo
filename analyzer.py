@@ -99,7 +99,8 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
 
     # Что достаём о каждом игроке в каждом кадре:
     #   yaw — куда смотрит (градусы), balance — деньги, inventory — что лежит в карманах
-    base_props = ["X", "Y", "team_num", "is_alive", "health", "active_weapon_name", "yaw", "balance", "armor_value"]
+    base_props = ["X", "Y", "team_num", "is_alive", "health", "active_weapon_name", "yaw", "balance", "armor_value",
+                  "current_equip_value"]
     try:
         ticks_df = parser.parse_ticks(base_props + ["inventory"], ticks=wanted)
     except Exception:
@@ -112,14 +113,15 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
     # by_tick[тик] = список состояний всех игроков в этот момент
     by_tick: dict[int, list] = {}
     cols = ["tick", "steamid"] + base_props + ["inventory"]
-    for tick, sid, x, y, team, alive, hp, weapon, yaw, money, armor, inv in ticks_df[cols].itertuples(index=False):
+    for tick, sid, x, y, team, alive, hp, weapon, yaw, money, armor, equip, inv in ticks_df[cols].itertuples(index=False):
         i = index.get(sid)
         if i is None or pd.isna(x) or pd.isna(y):
             continue
         nades, has_bomb = parse_inventory(inv)
         frame = by_tick.setdefault(int(tick), [None] * len(player_ids))
         # [0 x, 1 y, 2 жив (1/0), 3 команда (2 = T, 3 = CT), 4 HP, 5 оружие в руках,
-        #  6 куда смотрит, 7 деньги, 8 гранаты ("sfh..."), 9 несёт бомбу (1/0), 10 броня]
+        #  6 куда смотрит, 7 деньги, 8 гранаты ("sfh..."), 9 несёт бомбу (1/0), 10 броня,
+        #  11 стоимость снаряжения в руках и карманах]
         frame[i] = [
             round(float(x)),
             round(float(y)),
@@ -132,6 +134,7 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
             nades,
             has_bomb,
             num(armor),
+            num(equip),
         ]
 
     bomb = bomb_events(parser)
