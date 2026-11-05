@@ -125,11 +125,40 @@ def match_summary(mid: str, data: dict) -> dict:
     }
 
 
-def save_match(mid: str, data: dict) -> None:
+# Номер матча FACEIT, например 1-cb983688-b6af-484f-b0a5-ef13ad422663 (так же называется файл демки)
+FACEIT_ID_RE = re.compile(r"1-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def faceit_id_from(filename: str, explicit: str | None = None) -> str | None:
+    """Берём номер матча FACEIT: если его прислал сайт — его, иначе ищем в имени файла демки."""
+    if explicit and FACEIT_ID_RE.fullmatch(explicit):
+        return explicit
+    found = FACEIT_ID_RE.search((filename or "").lower())
+    return found.group(0) if found else None
+
+
+def write_meta(mid: str, meta: dict) -> None:
+    (MATCHES / f"{mid}.meta.json").write_text(json.dumps(meta, ensure_ascii=False, default=to_plain), encoding="utf-8")
+
+
+def save_match(mid: str, data: dict, faceit_id: str | None = None) -> None:
     with gzip.open(MATCHES / f"{mid}.json.gz", "wt", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"), default=to_plain)
-    (MATCHES / f"{mid}.meta.json").write_text(
-        json.dumps(match_summary(mid, data), ensure_ascii=False, default=to_plain), encoding="utf-8")
+    meta = match_summary(mid, data)
+    if faceit_id:
+        meta["faceit_id"] = faceit_id
+    write_meta(mid, meta)
+
+
+def link_faceit(mid: str, faceit_id: str | None) -> None:
+    """Демку уже разбирали, но теперь знаем её матч FACEIT — допишем в карточку."""
+    path = MATCHES / f"{mid}.meta.json"
+    if not faceit_id or not path.exists():
+        return
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    if meta.get("faceit_id") != faceit_id:
+        meta["faceit_id"] = faceit_id
+        write_meta(mid, meta)
 
 
 def saved_match_response(mid: str) -> Response:
@@ -138,17 +167,18 @@ def saved_match_response(mid: str) -> Response:
                     headers={"Content-Encoding": "gzip"})
 
 
-def run_analysis(raw: Path):
+def run_analysis(raw: Path, faceit_id: str | None = None):
     """Если такую демку уже разбирали — сразу отдаём сохранённое. Иначе разбираем, сохраняем и удаляем демку."""
     dem = None
     try:
         mid = file_id(raw)
         if (MATCHES / f"{mid}.json.gz").exists():
+            link_faceit(mid, faceit_id)
             return saved_match_response(mid)
         dem = prepare_demo(raw)
         data = analyze_demo(dem)
         data["id"] = mid
-        save_match(mid, data)
+        save_match(mid, data, faceit_id)
         return saved_match_response(mid)
     except HTTPException:
         raise
@@ -180,7 +210,9 @@ def upgrade_meta(meta: dict) -> dict:
         data = json.load(f)
     new = match_summary(mid, data)
     new["created"] = meta.get("created", new["created"])   # дату разбора оставляем прежней
-    (MATCHES / f"{mid}.meta.json").write_text(json.dumps(new, ensure_ascii=False, default=to_plain), encoding="utf-8")
+    if meta.get("faceit_id"):
+        new["faceit_id"] = meta["faceit_id"]
+    write_meta(mid, new)
     return new
 
 
@@ -206,6 +238,7 @@ def upload_chunk(
     total: int = Form(...),
     filename: str = Form(...),
     file: UploadFile = File(...),
+    faceit_id: str = Form(""),
 ):
     """Загрузка демки по кусочкам: так файл проходит даже через сервисы с лимитом 100 МБ на запрос.
     Кусочки приходят по порядку, мы дописываем их в один файл, а после последнего — разбираем демку."""
@@ -235,7 +268,7 @@ def upload_chunk(
 
     raw = UPLOADS / f"{upload_id}{suffix}"
     part.rename(raw)
-    return run_analysis(raw)
+    return run_analysis(raw, faceit_id_from(filename, faceit_id))
 
 
 @app.post("/api/analyze")
@@ -251,7 +284,7 @@ def analyze(file: UploadFile = File(...)):
     with raw.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    return run_analysis(raw)
+    return run_analysis(raw, faceit_id_from(file.filename or ""))
 
 
 # ---------------- FACEIT ----------------

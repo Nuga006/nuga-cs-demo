@@ -92,7 +92,7 @@
   .pcard .lv { margin-left: auto; text-align: right; }
   .pcard .lv b { font-size: 22px; color: var(--accent); }
   .mlist { display: flex; flex-direction: column; gap: 6px; margin-bottom: 28px; }
-  .mrow { display: grid; grid-template-columns: 6px 110px 1fr 70px 60px 60px 90px; gap: 12px; align-items: center;
+  .mrow { display: grid; grid-template-columns: 6px 150px 1fr 70px 60px 60px 190px; gap: 12px; align-items: center;
           background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 8px 0;
           font-size: 14px; overflow: hidden; }
   .mrow .rs { align-self: stretch; }
@@ -101,7 +101,17 @@
   .mrow .num { text-align: right; font-variant-numeric: tabular-nums; }
   .mrow a { color: var(--accent); text-decoration: none; text-align: right; font-weight: 600; }
   .mrow a:hover { text-decoration: underline; }
-  @media (max-width: 700px) { .mrow { grid-template-columns: 6px 1fr 60px 70px; } .mrow .hide { display: none; } }
+  .mrow .acts { display: flex; gap: 10px; align-items: center; justify-content: flex-end; white-space: nowrap; }
+  .mrow .acts button { border: 0; border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .mrow .openbtn { background: var(--win); color: #0b0c10; }
+  .mrow .upbtn { background: #2a2f3a; color: var(--text); }
+  .mrow .upbtn:hover { background: #343a47; }
+  .donebadge { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--win);
+               background: rgba(47,179,107,.15); border-radius: 6px; padding: 1px 6px; vertical-align: 2px; }
+  @media (max-width: 700px) {
+    .mrow { grid-template-columns: 6px minmax(0, 1fr) 54px 60px 96px; gap: 8px; }
+    .mrow .hide, .mrow .acts a { display: none; }
+  }
 
   /* Разобранные матчи */
   .hist { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 8px; }
@@ -394,6 +404,7 @@
       <button type="submit">Найти</button>
     </form>
     <div id="player"></div>
+    <input type="file" id="rowFile" accept=".dem,.gz,.zst" hidden>
 
     <h2>Мои матчи</h2>
     <div class="hist" id="history"></div>
@@ -636,10 +647,15 @@ function renderHeader(data) {
 // ---------- Сохранённые матчи ----------
 const mapTitle = (m) => (m || "?").replace(/^de_/, "").replace(/^./, (c) => c.toUpperCase());
 
+let MATCH_LIST = [];      // сохранённые разборы
+let LAST_PLAYER = null;   // последний показанный профиль FACEIT
+
 async function loadHistory() {
   try {
     const list = await (await fetch("/api/matches")).json();
+    MATCH_LIST = list;
     renderMyStats(list);
+    if (LAST_PLAYER) renderPlayer(LAST_PLAYER);   // обновить пометки «Разобран» в списке FACEIT
     if (!list.length) {
       $("history").innerHTML = `<div class="note">Пока пусто — загрузите первую демку ниже.</div>`;
       return;
@@ -809,19 +825,50 @@ $("search").addEventListener("submit", async (e) => {
   }
 });
 
+// Есть ли уже разбор этого матча FACEIT: сначала по номеру матча, потом по совпадению карты, счёта и K/D игрока
+function findSaved(fm, nick) {
+  const byId = MATCH_LIST.find((x) => x.faceit_id === fm.match_id);
+  if (byId) return byId;
+  const [a, b] = String(fm.score || "").split(":").map((x) => parseInt(x));
+  if (isNaN(a) || isNaN(b)) return null;
+  const k = Number(fm.kills), d = Number(fm.deaths);
+  return MATCH_LIST.find((x) => {
+    if (x.faceit_id || x.map !== fm.map) return false;
+    const st = (x.stats || []).find((q) => String(q.name).toLowerCase() === String(nick).toLowerCase());
+    if (!st || st.team < 0) return false;
+    return x.score[st.team] === a && x.score[1 - st.team] === b &&
+           Math.abs(st.kills - k) <= 1 && Math.abs(st.deaths - d) <= 1;
+  }) || null;
+}
+
+let ROW_FACEIT_ID = null;
+$("rowFile").addEventListener("change", () => {
+  const f = $("rowFile").files[0];
+  $("rowFile").value = "";
+  if (!f) return;
+  $("upload").scrollIntoView({ behavior: "smooth" });
+  upload(f, ROW_FACEIT_ID);
+});
+
 function renderPlayer(p) {
+  LAST_PLAYER = p;
   const date = (ts) => ts ? new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : "";
   const mapName = (m) => (m || "?").replace(/^de_/, "").replace(/^./, (c) => c.toUpperCase());
 
   const rows = p.matches.map((m) => {
     const rs = m.won === true ? "w" : m.won === false ? "l" : "n";
+    const saved = findSaved(m, p.nickname);
+    const acts = saved
+      ? `<button class="openbtn" data-id="${esc(saved.id)}">Разбор →</button>`
+      : `<button class="upbtn" data-fid="${esc(m.match_id)}" title="Выберите скачанную демку этого матча">Загрузить</button>`;
     return `<div class="mrow"><span class="rs ${rs}"></span>` +
-      `<span><div class="mp">${esc(mapName(m.map))}</div><div class="dt">${date(m.finished_at)}</div></span>` +
+      `<span><div class="mp">${esc(mapName(m.map))}${saved ? `<span class="donebadge">Разобран</span>` : ""}</div>` +
+      `<div class="dt">${date(m.finished_at)}</div></span>` +
       `<span class="num" style="text-align:left">${esc(m.score || "")}</span>` +
       `<span class="num">${m.kills ?? "-"} / ${m.deaths ?? "-"}</span>` +
       `<span class="num hide">${m.kd ?? ""}</span>` +
       `<span class="num hide">${m.adr ? Math.round(m.adr) : ""}</span>` +
-      `<a href="${esc(m.url)}" target="_blank" rel="noopener">Комната ↗</a></div>`;
+      `<span class="acts">${acts}<a href="${esc(m.url)}" target="_blank" rel="noopener">Комната ↗</a></span></div>`;
   }).join("");
 
   $("player").innerHTML =
@@ -831,11 +878,16 @@ function renderPlayer(p) {
     `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--muted)">профиль FACEIT ↗</a></div></div>` +
     `<div class="lv"><div class="note" style="margin:0">Уровень ${p.level ?? "-"}</div><b>${p.elo ?? "-"}</b> ELO</div></div>` +
     (rows
-      ? `<div class="note" style="margin:0 0 8px">Последние матчи. Чтобы разобрать матч: откройте «Комнату», нажмите «Watch demo» и загрузите файл ниже.</div>` +
+      ? `<div class="note" style="margin:0 0 8px">Чтобы разобрать матч: «Комната ↗» → «Watch demo» скачает демку → нажмите «Загрузить» в строке этого матча.</div>` +
         `<div class="mrow" style="background:none;border:0;color:var(--muted);font-size:12px;padding-top:0;padding-bottom:0">` +
         `<span></span><span>Карта</span><span>Счёт</span><span class="num">K / D</span><span class="num hide">K/D</span><span class="num hide">ADR</span><span></span></div>` +
         `<div class="mlist">${rows}</div>`
       : `<div class="note">Нет матчей CS2</div>`);
+  $("player").querySelectorAll(".openbtn").forEach((b) => b.addEventListener("click", () => openMatch(b.dataset.id, true)));
+  $("player").querySelectorAll(".upbtn").forEach((b) => b.addEventListener("click", () => {
+    ROW_FACEIT_ID = b.dataset.fid;
+    $("rowFile").click();
+  }));
 }
 
 // ---------- Загрузка файла ----------
@@ -866,7 +918,7 @@ function sendChunk(form, onProgress) {
   });
 }
 
-async function upload(file) {
+async function upload(file, faceitId = null) {
   $("result").style.display = "none";
   stop();
   bar.style.display = "block";
@@ -885,6 +937,7 @@ async function upload(file) {
       form.append("index", i);
       form.append("total", total);
       form.append("filename", file.name);
+      if (faceitId) form.append("faceit_id", faceitId);
       form.append("file", file.slice(i * CHUNK, (i + 1) * CHUNK), "chunk");
 
       if (i === total - 1) setStatus("Загружаем последний кусочек и разбираем демку... это может занять до минуты");
