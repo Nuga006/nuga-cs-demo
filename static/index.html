@@ -314,6 +314,18 @@
   .mebar { margin: 0 0 0 auto !important; }
   .mebar .mel { color: var(--muted); }
   h2.first { margin-top: 0; }
+  .steambtn { background: var(--accent); color: #fff; text-decoration: none; font-weight: 700; font-size: 14px;
+              border-radius: 999px; padding: 7px 14px; white-space: nowrap; }
+  .steambtn:hover { filter: brightness(1.1); }
+  .userbar { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .userbar img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: #2a2f3a; }
+  .userbar .un { font-weight: 700; font-size: 14px; line-height: 1.2; }
+  .userbar .ue { color: var(--muted); font-size: 12px; }
+  .userbar .ue b { color: var(--accent); }
+  .userbar a.out { color: var(--muted); font-size: 13px; text-decoration: none; border: 1px solid var(--line);
+                   border-radius: 999px; padding: 5px 12px; }
+  .userbar a.out:hover { color: var(--text); border-color: #3a3f4b; }
+  .loginerr { background: rgba(224,71,76,.12); color: var(--lose); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
   #home { padding-top: 8px; }
   .wrap { padding-top: 22px; }
   .result { margin-top: 0; }
@@ -343,6 +355,8 @@
 
   @media (max-width: 600px) {
     .topin { gap: 12px; height: 56px; }
+    .userbar .ut, .mebar input { display: none; }
+    .steambtn { padding: 6px 12px; font-size: 13px; }
     .logo b { display: none; }
     .tnav { gap: 12px; }
     .mebar .mel, #meNote { display: none; }
@@ -361,11 +375,13 @@
       <a href="/app" id="navHome">Матчи</a>
       <a href="/app#upload" id="navUpload">Загрузить</a>
     </nav>
-    <div class="mebar">
+    <div class="mebar" id="guestBar">
       <span class="mel">Мой ник</span>
       <input id="meInput" placeholder="например Nuga_006" autocomplete="off">
       <span id="meNote"></span>
+      <a class="steambtn" href="/auth/steam">Войти через Steam</a>
     </div>
+    <div class="userbar" id="userBar" hidden></div>
   </div>
 </header>
 
@@ -530,6 +546,35 @@ function teamLabel(data, ti) {
   const mi = myIndex(data);
   if (mi < 0) return `Команда ${ti + 1}`;
   return data.players[mi].team === teams[ti] ? "Моя команда" : "Соперники";
+}
+
+// ---------- Вход через Steam ----------
+let USER = null;
+async function loadUser() {
+  try {
+    const me = await (await fetch("/api/me")).json();
+    if (!me.logged_in) return;
+    USER = me;
+    const f = me.faceit;
+    $("guestBar").hidden = true;
+    $("guestBar").style.display = "none";
+    $("userBar").hidden = false;
+    $("userBar").innerHTML =
+      (me.avatar ? `<img src="${esc(me.avatar)}" alt="">` : `<img alt="">`) +
+      `<div class="ut"><div class="un">${esc(me.name)}</div>` +
+      `<div class="ue">${f ? `FACEIT ${f.level ?? "-"} ур. · <b>${f.elo ?? "-"}</b> ELO` : "FACEIT не найден"}</div></div>` +
+      `<a class="out" href="/auth/logout">Выйти</a>`;
+    // Ник FACEIT становится «моим» автоматически, а профиль сразу показываем в поиске
+    if (f?.nickname) {
+      if (!isMe(f.nickname)) setMe(f.nickname);
+      $("nick").value = f.nickname;
+      if (!$("player").innerHTML) $("search").requestSubmit();
+    }
+  } catch { /* сервер без входа — работаем как гость */ }
+}
+if (new URLSearchParams(location.search).get("login") === "error") {
+  $("home").insertAdjacentHTML("afterbegin", `<div class="loginerr">Не получилось войти через Steam — попробуйте ещё раз.</div>`);
+  history.replaceState({}, "", "/app");
 }
 
 // ---------- Вкладки страницы матча ----------
@@ -1770,6 +1815,7 @@ $("seek").addEventListener("input", (e) => { R.pos = Number(e.target.value); dra
 
 // ---------- При открытии страницы ----------
 loadHistory();
+loadUser();
 {
   const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
   if (m) openMatch(m[1], false);

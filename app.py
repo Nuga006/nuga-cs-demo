@@ -4,6 +4,8 @@
 
 import gzip
 import hashlib
+import hmac
+import secrets
 import json
 import os
 import re
@@ -15,8 +17,8 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from analyzer import analyze_demo, prepare_demo
@@ -46,6 +48,20 @@ def load_env(path: Path) -> None:
 
 load_env(BASE / ".env")
 FACEIT_API = "https://open.faceit.com/data/v4"
+
+
+def session_secret() -> bytes:
+    """Секрет для подписи cookie входа. Если его ещё нет — создаём и дописываем в .env (он не попадает в git)."""
+    value = os.environ.get("SESSION_SECRET")
+    if not value:
+        value = secrets.token_hex(32)
+        with (BASE / ".env").open("a", encoding="utf-8") as f:
+            f.write(f"\nSESSION_SECRET={value}\n")
+        os.environ["SESSION_SECRET"] = value
+    return value.encode()
+
+
+SECRET = session_secret()
 
 app = FastAPI(title="Nuga CS Demo")
 
@@ -337,3 +353,142 @@ def faceit_player(nickname: str = Query(..., min_length=2, max_length=32), limit
         "url": (player.get("faceit_url") or "").replace("{lang}", "ru"),
         "matches": matches,
     }
+
+
+# ---------------- Вход через Steam (OpenID 2.0) ----------------
+
+STEAM_OPENID = "https://steamcommunity.com/openid/login"
+STEAM_ID_RE = re.compile(r"^https://steamcommunity\.com/openid/id/(\d{17})$")
+SESSION_COOKIE = "nuga_session"
+SESSION_DAYS = 30
+
+
+def site_url(request: Request) -> str:
+    """Адрес сайта, как его видит пользователь (через туннель это https://....trycloudflare.com)."""
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}"
+
+
+def sign(value: str) -> str:
+    return hmac.new(SECRET, value.encode(), hashlib.sha256).hexdigest()
+
+
+def make_session(steam_id: str) -> str:
+    """Cookie вида «steamid.срок.подпись». Подделать без секрета нельзя."""
+    payload = f"{steam_id}.{int(time.time()) + SESSION_DAYS * 86400}"
+    return f"{payload}.{sign(payload)}"
+
+
+def read_session(request: Request) -> str | None:
+    """Steam ID вошедшего пользователя или None."""
+    raw = request.cookies.get(SESSION_COOKIE, "")
+    parts = raw.split(".")
+    if len(parts) != 3:
+        return None
+    steam_id, expires, signature = parts
+    if not hmac.compare_digest(signature, sign(f"{steam_id}.{expires}")):
+        return None
+    if not expires.isdigit() or int(expires) < time.time():
+        return None
+    return steam_id
+
+
+@app.get("/auth/steam")
+def steam_login(request: Request):
+    """Отправляем пользователя на страницу входа Steam."""
+    base = site_url(request)
+    params = {
+        "openid.ns": "http://specs.openid.net/auth/2.0",
+        "openid.mode": "checkid_setup",
+        "openid.return_to": f"{base}/auth/steam/callback",
+        "openid.realm": base,
+        "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
+        "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select",
+    }
+    return RedirectResponse(f"{STEAM_OPENID}?{urllib.parse.urlencode(params)}")
+
+
+@app.get("/auth/steam/callback")
+def steam_callback(request: Request):
+    """Steam вернул пользователя. Проверяем ответ у самого Steam и только тогда пускаем."""
+    params = dict(request.query_params)
+    base = site_url(request)
+
+    # 1) Ответ должен быть адресован именно нам и содержать Steam ID
+    match = STEAM_ID_RE.match(params.get("openid.claimed_id", ""))
+    if (params.get("openid.mode") != "id_res" or not match
+            or params.get("openid.return_to", "").split("?")[0] != f"{base}/auth/steam/callback"
+            or params.get("openid.op_endpoint") != STEAM_OPENID):
+        return RedirectResponse("/app?login=error")
+
+    # 2) Спрашиваем Steam: «этот ответ действительно от тебя?»
+    check = dict(params, **{"openid.mode": "check_authentication"})
+    try:
+        req = urllib.request.Request(STEAM_OPENID, data=urllib.parse.urlencode(check).encode(),
+                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+        with urllib.request.urlopen(req, timeout=15) as res:
+            answer = res.read().decode("utf-8", "replace")
+    except urllib.error.URLError:
+        return RedirectResponse("/app?login=error")
+    if "is_valid:true" not in answer:
+        return RedirectResponse("/app?login=error")
+
+    response = RedirectResponse("/app")
+    response.set_cookie(SESSION_COOKIE, make_session(match.group(1)), max_age=SESSION_DAYS * 86400,
+                        httponly=True, samesite="lax", secure=base.startswith("https"))
+    return response
+
+
+@app.get("/auth/logout")
+def logout():
+    response = RedirectResponse("/")
+    response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
+PROFILE_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def steam_profile(steam_id: str) -> dict:
+    """Имя и аватар из открытого профиля Steam (без API-ключа)."""
+    try:
+        url = f"https://steamcommunity.com/profiles/{steam_id}/?xml=1"
+        with urllib.request.urlopen(url, timeout=10) as res:
+            xml = res.read().decode("utf-8", "replace")
+        name = re.search(r"<steamID><!\[CDATA\[(.*?)\]\]></steamID>", xml, re.S)
+        avatar = re.search(r"<avatarMedium><!\[CDATA\[(.*?)\]\]></avatarMedium>", xml, re.S)
+        return {"name": name.group(1) if name else None, "avatar": avatar.group(1) if avatar else None}
+    except (urllib.error.URLError, ValueError):
+        return {"name": None, "avatar": None}
+
+
+@app.get("/api/me")
+def me(request: Request):
+    """Кто вошёл: Steam ID + профиль FACEIT (если есть) + имя из Steam."""
+    steam_id = read_session(request)
+    if not steam_id:
+        return {"logged_in": False}
+
+    cached = PROFILE_CACHE.get(steam_id)
+    if cached and cached[0] > time.time():
+        return cached[1]
+
+    profile = {"logged_in": True, "steam_id": steam_id, "faceit": None}
+    try:
+        player = faceit_get("/players", {"game": "cs2", "game_player_id": steam_id})
+        cs2 = (player.get("games") or {}).get("cs2") or {}
+        profile["faceit"] = {
+            "nickname": player.get("nickname"),
+            "avatar": player.get("avatar"),
+            "level": cs2.get("skill_level"),
+            "elo": cs2.get("faceit_elo"),
+        }
+    except HTTPException:
+        pass                                    # нет аккаунта FACEIT или нет ключа — не страшно
+    steam = steam_profile(steam_id)
+    profile["name"] = (profile["faceit"] or {}).get("nickname") or steam["name"] or steam_id
+    profile["avatar"] = (profile["faceit"] or {}).get("avatar") or steam["avatar"]
+
+    PROFILE_CACHE[steam_id] = (time.time() + 600, profile)
+    return profile
