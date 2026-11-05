@@ -129,6 +129,27 @@
   .prow.me .pn { color: var(--accent); }
   .chip.btn:hover { border-color: var(--accent); }
 
+  /* Моя статистика */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .tile .lb { color: var(--muted); font-size: 12px; }
+  .tile .vl { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile .vl.good { color: var(--win); } .tile .vl.bad { color: var(--lose); }
+  .mygrid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
+  @media (max-width: 820px) { .mygrid { grid-template-columns: 1fr; } }
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .chart h3, .maps h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart circle { cursor: pointer; }
+  .maps { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .maprow { display: grid; grid-template-columns: 76px 1fr 54px 44px; gap: 8px; align-items: center; font-size: 13px;
+            padding: 6px 0; border-top: 1px solid var(--line); }
+  .maprow:first-of-type { border-top: 0; }
+  .maprow .wr { height: 8px; background: rgba(224,71,76,.55); border-radius: 4px; overflow: hidden; }
+  .maprow .wr i { display: block; height: 100%; background: var(--win); }
+  .maprow .n { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .maprow .r { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+
   /* Разбор игрока */
   .pctrl { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .pctrl select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
@@ -282,6 +303,9 @@
   <h2>Разобранные матчи</h2>
   <div class="hist" id="history"></div>
 
+  <h2>Моя статистика</h2>
+  <div id="mystats"></div>
+
   <h2>Разбор демки</h2>
   <label class="drop" id="drop">
     <input type="file" id="file" accept=".dem,.gz,.zst">
@@ -412,6 +436,7 @@ const mapTitle = (m) => (m || "?").replace(/^de_/, "").replace(/^./, (c) => c.to
 async function loadHistory() {
   try {
     const list = await (await fetch("/api/matches")).json();
+    renderMyStats(list);
     if (!list.length) {
       $("history").innerHTML = `<div class="note">Пока пусто — загрузите первую демку ниже.</div>`;
       return;
@@ -437,6 +462,92 @@ async function loadHistory() {
   } catch {
     $("history").innerHTML = `<div class="note">Не удалось загрузить список матчей</div>`;
   }
+}
+
+// ---------- Моя статистика по всем матчам ----------
+function renderMyStats(list) {
+  const box = $("mystats");
+  if (!ME) {
+    box.innerHTML = `<div class="note">Укажите «Мой ник» вверху — здесь появится ваша статистика по всем разобранным матчам.</div>`;
+    return;
+  }
+  // Матчи, где я играл, — от старых к новым
+  const games = [];
+  for (const m of list) {
+    const st = (m.stats || []).find((p) => isMe(p.name));
+    if (!st || st.team < 0) continue;
+    const mine = m.score[st.team], theirs = m.score[1 - st.team];
+    games.push({ m, st, mine, theirs, won: mine > theirs, lost: mine < theirs });
+  }
+  if (!games.length) {
+    box.innerHTML = `<div class="note">Пока нет разобранных матчей с ником ${esc(ME)}.</div>`;
+    return;
+  }
+  games.sort((a, b) => a.m.created - b.m.created);
+
+  const n = games.length;
+  const avg = (key) => games.reduce((s, g) => s + (Number(g.st[key]) || 0), 0) / n;
+  const sum = (key) => games.reduce((s, g) => s + (Number(g.st[key]) || 0), 0);
+  const wins = games.filter((g) => g.won).length;
+  const rating = avg("rating"), kd = sum("kills") / Math.max(1, sum("deaths"));
+  const winrate = Math.round((wins / n) * 100);
+
+  const tile = (label, value, cls = "") => `<div class="tile"><div class="lb">${label}</div><div class="vl ${cls}">${value}</div></div>`;
+  const tiles =
+    tile("Матчей", n) +
+    tile("Побед", `${winrate}%`, winrate >= 50 ? "good" : "bad") +
+    tile("Rating", rating.toFixed(2), rating >= 1.1 ? "good" : rating < 0.9 ? "bad" : "") +
+    tile("K/D", kd.toFixed(2), kd >= 1 ? "good" : "bad") +
+    tile("ADR", avg("adr").toFixed(1)) +
+    tile("KAST", `${Math.round(avg("kast"))}%`) +
+    tile("HS", `${Math.round(avg("hs"))}%`);
+
+  // Статистика по картам
+  const byMap = {};
+  for (const g of games) {
+    const k = mapTitle(g.m.map);
+    byMap[k] = byMap[k] || { n: 0, w: 0, r: 0 };
+    byMap[k].n++; if (g.won) byMap[k].w++; byMap[k].r += Number(g.st.rating) || 0;
+  }
+  const maps = Object.entries(byMap).sort((a, b) => b[1].n - a[1].n).map(([name, v]) => {
+    const r = v.r / v.n, wr = Math.round((v.w / v.n) * 100);
+    const cls = r >= 1.1 ? "good" : r < 0.9 ? "bad" : "";
+    return `<div class="maprow"><span>${esc(name)}</span>` +
+      `<span class="wr" title="Побед ${wr}%"><i style="width:${wr}%"></i></span>` +
+      `<span class="n">${v.w}–${v.n - v.w}</span><span class="r ${cls}">${r.toFixed(2)}</span></div>`;
+  }).join("");
+
+  box.innerHTML = `<div class="tiles">${tiles}</div>` +
+    `<div class="mygrid"><div class="chart"><h3>Rating по матчам</h3>${ratingChart(games)}</div>` +
+    `<div class="maps"><h3>Карты: победы–поражения и средний Rating</h3>${maps}</div></div>`;
+  box.querySelectorAll("circle[data-id]").forEach((c) => c.addEventListener("click", () => openMatch(c.dataset.id, true)));
+}
+
+// Линейный график рейтинга (SVG). Пунктир — уровень 1.00, точки: зелёные — победы, красные — поражения
+function ratingChart(games) {
+  const W = 600, H = 190, L = 34, Rt = 10, T = 12, B = 22;
+  const vals = games.map((g) => Number(g.st.rating) || 0);
+  const top = Math.max(2, Math.ceil(Math.max(...vals) * 2) / 2), bottom = 0;
+  const x = (i) => games.length === 1 ? (L + W - Rt) / 2 : L + (i * (W - L - Rt)) / (games.length - 1);
+  const y = (v) => T + ((top - v) * (H - T - B)) / (top - bottom);
+
+  let grid = "";
+  for (let v = 0; v <= top + 1e-9; v += 0.5) {
+    grid += `<line x1="${L}" x2="${W - Rt}" y1="${y(v)}" y2="${y(v)}" ` +
+            (v === 1 ? `stroke="#8b909c" stroke-dasharray="5 5"/>` : `stroke="#262a33"/>`) +
+            `<text x="${L - 6}" y="${y(v) + 4}" fill="#8b909c" font-size="11" text-anchor="end">${v.toFixed(1)}</text>`;
+  }
+  const line = games.length > 1
+    ? `<polyline fill="none" stroke="#ff5a1f" stroke-width="2.5" stroke-linejoin="round" points="${vals.map((v, i) => `${x(i)},${y(v)}`).join(" ")}"/>`
+    : "";
+  const dots = games.map((g, i) => {
+    const color = g.won ? "#2fb36b" : g.lost ? "#e0474c" : "#8b909c";
+    const tip = `${mapTitle(g.m.map)} ${g.mine}:${g.theirs} · Rating ${vals[i].toFixed(2)} — открыть`;
+    return `<circle data-id="${esc(g.m.id)}" cx="${x(i)}" cy="${y(vals[i])}" r="6" fill="${color}" stroke="#181b22" stroke-width="2"><title>${esc(tip)}</title></circle>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="График рейтинга по матчам">${grid}${line}${dots}` +
+    `<text x="${L}" y="${H - 4}" fill="#8b909c" font-size="11">старые</text>` +
+    `<text x="${W - Rt}" y="${H - 4}" fill="#8b909c" font-size="11" text-anchor="end">новые</text></svg>`;
 }
 
 async function openMatch(id, push) {

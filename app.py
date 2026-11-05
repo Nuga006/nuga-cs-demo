@@ -94,6 +94,12 @@ def match_summary(mid: str, data: dict) -> dict:
         "mvp": {"name": best["name"], "rating": best.get("rating")} if best else None,
         "teams": [[p["name"] for p in players if p["team"] == t] for t in teams],
         "highlights": len(data.get("replay", {}).get("highlights", [])),
+        # Статистика каждого игрока — для раздела «Моя статистика» по всем матчам
+        "stats": [
+            {k: p.get(k) for k in ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "rating", "fk", "fd")}
+            | {"team": teams.index(p["team"]) if p["team"] in teams else -1}
+            for p in players
+        ],
     }
 
 
@@ -145,16 +151,30 @@ def get_match(mid: str):
     return saved_match_response(mid)
 
 
+def upgrade_meta(meta: dict) -> dict:
+    """Матчи, сохранённые старой версией, без статистики игроков: пересобираем карточку из полного разбора."""
+    mid = meta["id"]
+    with gzip.open(MATCHES / f"{mid}.json.gz", "rt", encoding="utf-8") as f:
+        data = json.load(f)
+    new = match_summary(mid, data)
+    new["created"] = meta.get("created", new["created"])   # дату разбора оставляем прежней
+    (MATCHES / f"{mid}.meta.json").write_text(json.dumps(new, ensure_ascii=False, default=to_plain), encoding="utf-8")
+    return new
+
+
 @app.get("/api/matches")
 def list_matches():
     """Все сохранённые матчи, новые сверху."""
     metas = []
     for path in MATCHES.glob("*.meta.json"):
         try:
-            metas.append(json.loads(path.read_text(encoding="utf-8")))
+            meta = json.loads(path.read_text(encoding="utf-8"))
+            if "stats" not in meta:
+                meta = upgrade_meta(meta)
+            metas.append(meta)
         except (OSError, ValueError):
             continue
-    return sorted(metas, key=lambda m: m.get("created", 0), reverse=True)[:60]
+    return sorted(metas, key=lambda m: m.get("created", 0), reverse=True)[:200]
 
 
 @app.post("/api/chunk")
