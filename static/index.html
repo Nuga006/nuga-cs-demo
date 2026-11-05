@@ -7,8 +7,8 @@
 <style>
   :root {
     --bg: #0f1115; --panel: #181b22; --line: #262a33;
-    --text: #e8e9ec; --muted: #8b909c; --accent: #ff5a1f;
-    --win: #2fb36b; --lose: #e0474c;
+    --text: #e8e9ec; --muted: #8b909c; --accent: #2dd4bf; --on-accent: #042f2b;
+    --win: #4ade80; --lose: #e0474c;
     --t: #e8b14a; --ct: #5b9dff;
   }
   * { box-sizing: border-box; }
@@ -55,14 +55,14 @@
   .rbtn { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
           padding: 4px 0; width: 38px; cursor: pointer; font: inherit; font-size: 13px; border-bottom-width: 3px; }
   .rbtn.t { border-bottom-color: var(--t); } .rbtn.ct { border-bottom-color: var(--ct); }
-  .rbtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .rbtn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
   .replay { display: grid; grid-template-columns: minmax(0, 640px) 1fr; gap: 16px; align-items: start; }
   @media (max-width: 820px) { .replay { grid-template-columns: 1fr; } }
   .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
   canvas { width: 100%; aspect-ratio: 1; display: block; border-radius: 8px; background: #0b0d11; }
   .controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-  .controls button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 6px 14px;
+  .controls button { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; padding: 6px 14px;
                      font: inherit; cursor: pointer; min-width: 74px; }
   .controls select { background: var(--bg); color: var(--text); border: 1px solid var(--line);
                      border-radius: 8px; padding: 5px; font: inherit; }
@@ -83,7 +83,7 @@
   .search input { flex: 1; min-width: 0; background: var(--panel); color: var(--text); border: 1px solid var(--line);
                   border-radius: 10px; padding: 10px 14px; font: inherit; }
   .search input:focus { outline: none; border-color: var(--accent); }
-  .search button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 0 18px;
+  .search button { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 10px; padding: 0 18px;
                    font: inherit; font-weight: 600; cursor: pointer; }
   .pcard { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--line);
            border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
@@ -107,7 +107,7 @@
   .mrow .upbtn { background: #2a2f3a; color: var(--text); }
   .mrow .upbtn:hover { background: #343a47; }
   .donebadge { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--win);
-               background: rgba(47,179,107,.15); border-radius: 6px; padding: 1px 6px; vertical-align: 2px; }
+               background: rgba(74,222,128,.15); border-radius: 6px; padding: 1px 6px; vertical-align: 2px; }
   @media (max-width: 700px) {
     .mrow { grid-template-columns: 6px minmax(0, 1fr) 54px 60px 96px; gap: 8px; }
     .mrow .hide, .mrow .acts a { display: none; }
@@ -134,7 +134,7 @@
                  padding: 5px 10px; font: inherit; width: 170px; }
   .mebar input:focus { outline: none; border-color: var(--accent); }
   .mebar b { color: var(--accent); }
-  tr.me td { background: rgba(255, 90, 31, .08); }
+  tr.me td { background: rgba(45,212,191, .08); }
   tr.me td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
   .prow.me .pn { color: var(--accent); }
   .chip.btn:hover { border-color: var(--accent); }
@@ -166,7 +166,7 @@
                   padding: 8px 12px; font: inherit; min-width: 200px; }
   .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
   .seg button { background: none; border: 0; color: var(--muted); font: inherit; padding: 5px 14px; border-radius: 8px; cursor: pointer; }
-  .seg button.on { background: var(--accent); color: #fff; }
+  .seg button.on { background: var(--accent); color: var(--on-accent); }
   .pgrid { display: grid; grid-template-columns: minmax(0, 640px) 1fr; gap: 16px; align-items: start; }
   @media (max-width: 820px) { .pgrid { grid-template-columns: 1fr; } }
   .pbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
@@ -222,7 +222,7 @@
   .cmd { display: flex; gap: 6px; margin-top: 5px; }
   .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: #0b0d11; border: 1px solid var(--line);
               border-radius: 8px; padding: 7px 10px; font: 13px ui-monospace, Consolas, monospace; color: #e8c547; }
-  .cmd button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 0 12px; font: inherit;
+  .cmd button { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; padding: 0 12px; font: inherit;
                 font-size: 13px; cursor: pointer; white-space: nowrap; }
   .clipnote { color: var(--muted); font-size: 12px; margin: -4px 0 12px; min-height: 16px; }
   .clipnote.rec { color: var(--lose); font-weight: 600; }
@@ -232,7 +232,7 @@
   .hcard:hover { border-color: var(--accent); transform: translateY(-1px); }
   .hcard .bd { font-weight: 800; font-size: 14px; border-radius: 8px; padding: 6px 8px; min-width: 46px; text-align: center; }
   .bd.ace { background: linear-gradient(135deg, #ffd34d, #ff8a1f); color: #1a1205; }
-  .bd.k4 { background: #ff5a1f; color: #fff; } .bd.k3 { background: #3a3f4b; color: #fff; }
+  .bd.k4 { background: #2dd4bf; color: #042f2b; } .bd.k3 { background: #3a3f4b; color: #fff; }
   .bd.cl { background: #7b4dff; color: #fff; }
   .hcard .hn { font-weight: 600; font-size: 14px; }
   .hcard .hs { color: var(--muted); font-size: 12px; }
@@ -267,7 +267,7 @@
   /* Таблицы, которые листаются вбок: ник игрока (первая колонка) остаётся на месте */
   .scroll th:first-child, .scroll td:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
   .scroll tr.team-head td:first-child { background: #1f232c; }
-  .scroll tr.me td:first-child { background: #2a1f1a; }
+  .scroll tr.me td:first-child { background: #12302c; }
 
   /* ---------- Телефон ---------- */
   @media (max-width: 600px) {
@@ -316,7 +316,7 @@
   .sidenav a { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 12px; color: #c9ccd3;
                text-decoration: none; font-weight: 600; font-size: 15px; transition: .12s; }
   .sidenav a:hover { background: #16181e; color: #fff; }
-  .sidenav a.on { background: linear-gradient(90deg, rgba(255,90,31,.24), rgba(255,90,31,.06)); color: var(--accent); }
+  .sidenav a.on { background: linear-gradient(90deg, rgba(45,212,191,.24), rgba(45,212,191,.06)); color: var(--accent); }
   .sidenav .ni { width: 22px; text-align: center; font-size: 15px; opacity: .85; }
   .nsep { margin: 14px 14px 6px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
   .nfoot { margin-top: auto; color: #565b66; font-size: 11px; padding: 12px 14px 0; }
@@ -331,7 +331,7 @@
   .pbtn { display: inline-flex; align-items: center; gap: 8px; background: #1b1e26; border: 1px solid var(--line); color: var(--text);
           border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; }
   .pbtn:hover { border-color: #3a3f4b; }
-  .pbtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 6px 24px rgba(255,90,31,.25); }
+  .pbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 6px 24px rgba(45,212,191,.25); }
   .pbtn:disabled { opacity: .6; cursor: wait; }
 
   .segtabs { display: flex; background: #15171d; border: 1px solid var(--line); border-radius: 18px; padding: 5px; gap: 5px; margin-bottom: 12px; }
@@ -358,17 +358,22 @@
   .mgroup { padding: 14px 20px 8px; font-weight: 700; font-size: 14px; border-top: 1px solid var(--line); }
   .mgroup small { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .mtr { min-height: 74px; border-top: 1px solid var(--line); transition: background-color .12s; }
-  .mtr.win { background-image: linear-gradient(90deg, rgba(47,179,107,.11), transparent 42%); }
+  .mtr.win { background-image: linear-gradient(90deg, rgba(74,222,128,.11), transparent 42%); }
   .mtr.lose { background-image: linear-gradient(90deg, rgba(224,71,76,.11), transparent 42%); }
   .mtr.done { cursor: pointer; } .mtr.done:hover { background-color: #1c1f27; }
   .mmap { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .micon { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-weight: 900;
-           font-size: 13px; color: #111; letter-spacing: .02em; }
+  .micon { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; font-weight: 900;
+           font-size: 13px; color: #111; letter-spacing: .02em; position: relative; overflow: hidden; }
+  /* Миниатюра радара поверх цветной плашки; если картинки нет — видны буквы */
+  .micon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.25);
+               background: #0b0c10; }
+  .micon img.logo-icon { transform: none; object-fit: contain; padding: 3px; background: #1b1e26; }
+  .micon::after { content: ""; position: absolute; inset: 0; border-radius: 12px; box-shadow: inset 0 0 0 2px var(--ring, transparent); }
   .mname { font-weight: 700; white-space: nowrap; } .mname .s { margin-left: 8px; font-weight: 800; }
   .s.w, .mscore.w { color: var(--win); } .s.l, .mscore.l { color: var(--lose); }
   .mmeta { color: var(--muted); font-size: 12px; margin-top: 3px; white-space: nowrap; }
   .mtag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 7px; margin-right: 6px;
-          background: rgba(255,90,31,.15); color: var(--accent); }
+          background: rgba(255,85,0,.16); color: #ff6a1a; }   /* FACEIT — фирменный оранжевый */
   .mtag.up { background: rgba(91,157,255,.15); color: var(--ct); }
   .mtime { color: var(--muted); font-size: 13px; text-align: center; }
   .mscore { font-size: 22px; font-weight: 900; text-align: center; font-variant-numeric: tabular-nums; }
@@ -381,9 +386,9 @@
   .mact { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
   .abtn { border: 0; border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
           white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
-  .abtn.imp { background: rgba(255,90,31,.15); color: var(--accent); } .abtn.imp:hover { background: rgba(255,90,31,.25); }
+  .abtn.imp { background: rgba(45,212,191,.15); color: var(--accent); } .abtn.imp:hover { background: rgba(45,212,191,.25); }
   .abtn.ghost { background: #262a33; color: var(--text); } .abtn.ghost:hover { background: #303540; }
-  .hlchip { border: 1px solid rgba(255,90,31,.5); color: var(--accent); border-radius: 8px; padding: 3px 9px; font-size: 13px; font-weight: 700; }
+  .hlchip { border: 1px solid rgba(45,212,191,.5); color: var(--accent); border-radius: 8px; padding: 3px 9px; font-size: 13px; font-weight: 700; }
   .chev { color: var(--muted); font-size: 22px; line-height: 1; }
   .mempty { padding: 44px 20px; text-align: center; color: var(--muted); }
 
@@ -419,7 +424,7 @@
   .scard .sb { color: var(--muted); font-size: 13px; }
   .scard.ex::before, .scard.gd::before { background: var(--win); } .scard.bd::before { background: var(--lose); }
   .scard.ex .vl, .scard.gd .vl { color: var(--win); } .scard.bd .vl { color: var(--lose); }
-  .scard.ex .gr, .scard.gd .gr { background: rgba(47,179,107,.15); color: var(--win); }
+  .scard.ex .gr, .scard.gd .gr { background: rgba(74,222,128,.15); color: var(--win); }
   .scard.bd .gr { background: rgba(224,71,76,.15); color: var(--lose); }
   .cgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; background: #15171d; border: 1px solid var(--line);
            border-radius: 20px; padding: 16px; margin-bottom: 8px; }
@@ -515,7 +520,7 @@
             border-bottom: 1px solid rgba(255,255,255,.06); }
   .topin { max-width: 1100px; margin: 0 auto; padding: 0 16px; height: 60px; display: flex; align-items: center; gap: 22px; }
   .logo { display: flex; align-items: center; gap: 9px; color: var(--text); text-decoration: none; font-size: 17px; letter-spacing: -.02em; }
-  .logo i { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #ff5a1f, #ffb020); color: #111;
+  .logo i { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #2dd4bf, #22d3ee); color: #111;
             display: grid; place-items: center; font-style: normal; font-weight: 900; font-size: 14px; }
   .logo b span { color: var(--accent); }
   .tnav { display: flex; gap: 18px; }
@@ -524,7 +529,7 @@
   .mebar { margin: 0 0 0 auto !important; }
   .mebar .mel { color: var(--muted); }
   h2.first { margin-top: 0; }
-  .steambtn { background: var(--accent); color: #fff; text-decoration: none; font-weight: 700; font-size: 14px;
+  .steambtn { background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 700; font-size: 14px;
               border-radius: 999px; padding: 7px 14px; white-space: nowrap; }
   .steambtn:hover { filter: brightness(1.1); }
   .userbar { margin-left: auto; display: flex; align-items: center; gap: 10px; }
@@ -549,7 +554,7 @@
   .mbox h3 button { background: none; border: 0; color: var(--muted); font-size: 24px; cursor: pointer; }
   .bal { font-size: 44px; font-weight: 900; margin: 10px 0 2px; display: flex; align-items: center; gap: 10px; }
   .bal .coin { width: 44px; height: 44px; }
-  .bonusbtn { width: 100%; margin: 14px 0; background: var(--accent); color: #fff; border: 0; border-radius: 12px; padding: 12px;
+  .bonusbtn { width: 100%; margin: 14px 0; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 12px; padding: 12px;
               font: inherit; font-weight: 800; cursor: pointer; }
   .bonusbtn:disabled { background: #2a2f3a; color: var(--muted); cursor: default; }
   .prices { display: grid; gap: 6px; font-size: 14px; color: var(--muted); margin-bottom: 14px; }
@@ -576,7 +581,7 @@
   .mhead .msub { color: var(--muted); font-size: 14px; }
   .mbadge { position: absolute; top: 18px; right: 18px; border-radius: 999px; padding: 4px 14px; font-weight: 700; font-size: 14px;
             background: rgba(255,255,255,.08); color: var(--muted); }
-  .mbadge.win { background: rgba(47,179,107,.18); color: var(--win); }
+  .mbadge.win { background: rgba(74,222,128,.18); color: var(--win); }
   .mbadge.lose { background: rgba(224,71,76,.18); color: var(--lose); }
 
   .tabs { position: sticky; top: 60px; z-index: 15; display: flex; gap: 4px; background: rgba(24,27,34,.95); backdrop-filter: blur(8px);
@@ -1033,7 +1038,7 @@ function renderHeader(data) {
   $("mhead").style.background =
     `linear-gradient(90deg, rgba(11,12,16,.96) 35%, rgba(11,12,16,.55)), ` +
     `url("/static/maps/${encodeURIComponent(data.map)}.png") right -40px center / 360px auto no-repeat, ` +
-    `radial-gradient(circle at 85% 20%, rgba(255,90,31,.25), transparent 55%), #15171d`;
+    `radial-gradient(circle at 85% 20%, rgba(45,212,191,.25), transparent 55%), #15171d`;
   $("mhead").innerHTML = `${badge}<div class="mmap">${esc(map.toUpperCase())}</div>` +
     `<div class="msc">${a}<span>:</span>${b}</div><div class="msub">${sub}</div>`;
   document.title = `${map} ${a}:${b} — Nuga CS Demo`;
@@ -1099,6 +1104,13 @@ function buildRows() {
   return rows;
 }
 
+// Значок карты: сначала логотип из static/maps/icons/<карта>.png, если его нет — радар, если нет и радара — буквы
+function mapIconImg(map) {
+  const m = encodeURIComponent(map);
+  return `<img src="/static/maps/icons/${m}.png" alt="" loading="lazy" class="logo-icon" ` +
+    `onerror="if(!this.dataset.r){this.dataset.r=1;this.className='';this.src='/static/maps/${m}.png'}else{this.remove()}">`;
+}
+
 // Цвет и сокращение для значка карты
 const MAP_COLORS = { de_mirage: "#e7a64a", de_inferno: "#e0663b", de_ancient: "#45b07a", de_anubis: "#d6b13f", de_nuke: "#58a0e6",
                      de_dust2: "#e3c27a", de_overpass: "#5bbcb4", de_vertigo: "#9b8cf0", de_train: "#a7adb7" };
@@ -1162,7 +1174,8 @@ function renderMatchesPage() {
       : `<button class="abtn imp" data-fid="${esc(r.fid)}" title="Выберите скачанную демку этого матча">Загрузить · 2 <span class="coin"></span></button>` +
         `<a class="abtn ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Комната ↗</a>`;
     return `<div class="mtr ${r.won === true ? "win" : r.won === false ? "lose" : ""}${r.saved ? " done" : ""}"${r.saved ? ` data-id="${esc(r.saved.id)}"` : ""}>` +
-      `<div class="mmap"><span class="micon" style="background:${mapColor(r.map)}">${esc(mapAbbr(r.map))}</span>` +
+      `<div class="mmap"><span class="micon" style="background:${mapColor(r.map)};--ring:${mapColor(r.map)}">${esc(mapAbbr(r.map))}` +
+      mapIconImg(r.map) + `</span>` +
       `<div><div class="mname">${esc(mapTitle(r.map))}${hasScore ? `<span class="s ${sc}">${r.a}–${r.b}</span>` : ""}</div>` +
       `<div class="mmeta"><span class="mtag${r.src === "upload" ? " up" : ""}">${r.src === "faceit" ? "FACEIT" : "Загружен"}</span>` +
       `${r.ts ? `${dayLabel(r.ts)}, ${time(r.ts)}` : ""}</div></div></div>` +
@@ -1558,7 +1571,7 @@ function trendChart(games, metric) {
     ? `<text x="${x(i)}" y="${H - 8}" fill="#8b909c" font-size="11" text-anchor="middle">${dfmt(p.g.m.created)}</text>` : "").join("");
   const line = pts.length > 1 ? `<polyline fill="none" stroke="#8f86f0" stroke-width="2.5" stroke-linejoin="round" points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}"/>` : "";
   const dots = pts.map((p, i) => {
-    const color = p.g.a > p.g.b ? "#2fb36b" : p.g.a < p.g.b ? "#e0474c" : "#8b909c";
+    const color = p.g.a > p.g.b ? "#4ade80" : p.g.a < p.g.b ? "#e0474c" : "#8b909c";
     const tip = `${mapTitle(p.g.m.map)} ${p.g.a}:${p.g.b} · ${p.v.toFixed(digits || 1)} — открыть`;
     return `<circle data-id="${esc(p.g.m.id)}" cx="${x(i)}" cy="${y(p.v)}" r="5.5" fill="${color}" stroke="#15171d" stroke-width="2"><title>${esc(tip)}</title></circle>`;
   }).join("");
@@ -1794,7 +1807,7 @@ function render(data) {
       d += `<tr${isMe(r.name) ? ' class="me"' : ""}><td>${esc(r.name)}</td>`;
       for (const c of cols) {
         const won = count(r, c), lost = count(c, r);
-        const color = won > lost ? "rgba(47,179,107,.25)" : won < lost ? "rgba(224,71,76,.25)" : "transparent";
+        const color = won > lost ? "rgba(74,222,128,.25)" : won < lost ? "rgba(224,71,76,.25)" : "transparent";
         d += `<td><span class="cell" style="background:${color}">${won} : ${lost}</span></td>`;
       }
       d += "</tr>";
@@ -2010,9 +2023,9 @@ function draw() {
       ctx.lineWidth = 3; ctx.strokeStyle = "#0b0d11"; ctx.stroke();
       if (isMe(pl.name)) {
         ctx.beginPath(); ctx.arc(x, y, 16 * U, 0, Math.PI * 2);
-        ctx.lineWidth = 3; ctx.strokeStyle = "#ff5a1f"; ctx.stroke();
+        ctx.lineWidth = 3; ctx.strokeStyle = "#2dd4bf"; ctx.stroke();
       }
-      ctx.fillStyle = isMe(pl.name) ? "#ff8a5c" : "#fff";
+      ctx.fillStyle = isMe(pl.name) ? "#99f6e4" : "#fff";
       ctx.font = `bold ${Math.round(20 * U)}px system-ui, sans-serif`;
       ctx.fillText(pl.name, x, y - 18 * U);
 
@@ -2021,7 +2034,7 @@ function draw() {
       const w = 34 * U, h = 5 * U, bx = x - w / 2, by = y + 16 * U;
       ctx.fillStyle = "rgba(0,0,0,.7)";
       ctx.fillRect(bx - 1, by - 1, w + 2, h + 2);
-      ctx.fillStyle = hp > 60 ? "#2fb36b" : hp > 25 ? "#e8b14a" : "#e0474c";
+      ctx.fillStyle = hp > 60 ? "#4ade80" : hp > 25 ? "#e8b14a" : "#e0474c";
       ctx.fillRect(bx, by, (w * hp) / 100, h);
 
       // Оружие в руках
@@ -2405,7 +2418,7 @@ function drawClipOverlay(r, curTick) {
   // Заголовок: «4K · Nuga_006» и «Раунд 9 · Mirage»
   ctx.fillStyle = "rgba(11,13,17,.82)";
   roundRect(24, 24, 560, 104, 16); ctx.fill();
-  ctx.fillStyle = "#ff5a1f";
+  ctx.fillStyle = "#2dd4bf";
   ctx.font = "800 44px system-ui, sans-serif";
   ctx.fillText(R.clip.title, 46, 78);
   ctx.fillStyle = "#c9ccd3";
@@ -2530,7 +2543,7 @@ function renderTeams(r, frame, curTick) {
         if (!p) return "";
         const alive = p[2] === 1;
         const hp = alive ? p[4] : 0;
-        const hpColor = hp > 60 ? "#2fb36b" : hp > 25 ? "#e8b14a" : "#e0474c";
+        const hpColor = hp > 60 ? "#4ade80" : hp > 25 ? "#e8b14a" : "#e0474c";
         const nades = alive ? [...(p[8] || "")].map((c) => `<b>${c}</b>`).join("") : "";
         const bomb = alive && p[9] ? `<b class="c4">C4</b>` : "";
         return `<div class="prow${alive ? "" : " dead"}${isMe(pl.name) ? " me" : ""}">` +
@@ -2594,12 +2607,12 @@ function drawBomb(r, curTick) {
   if (exploded) {
     ctx.beginPath();
     ctx.arc(x, y, 40, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,90,31,.35)";
+    ctx.fillStyle = "rgba(45,212,191,.35)";
     ctx.fill();
   }
   // Мигание, пока бомба тикает
   const blink = !defused && !exploded && Math.floor(curTick / 32) % 2 === 0;
-  ctx.fillStyle = defused ? "#2fb36b" : blink ? "#ff3b30" : "#a3241c";
+  ctx.fillStyle = defused ? "#4ade80" : blink ? "#ff3b30" : "#a3241c";
   ctx.fillRect(x - 12 * U, y - 9 * U, 24 * U, 18 * U);
   ctx.fillStyle = "#fff";
   ctx.font = `bold ${Math.round(12 * U)}px system-ui, sans-serif`;

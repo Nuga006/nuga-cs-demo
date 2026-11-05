@@ -8,8 +8,8 @@
 <style>
   :root {
     --bg: #0b0c10; --panel: #15171d; --panel2: #1b1e26; --line: #262a33;
-    --text: #eceef2; --muted: #8b909c; --accent: #ff5a1f; --accent2: #ffb020;
-    --win: #2fb36b; --lose: #e0474c; --t: #e8b14a; --ct: #5b9dff;
+    --text: #eceef2; --muted: #8b909c; --accent: #2dd4bf; --on-accent: #042f2b; --accent2: #22d3ee;
+    --win: #4ade80; --lose: #e0474c; --t: #e8b14a; --ct: #5b9dff;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -31,8 +31,8 @@
   .nav .right { margin-left: auto; }
   .btn { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; padding: 12px 22px;
          font-weight: 700; font-size: 16px; border: 0; cursor: pointer; transition: .15s; }
-  .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 8px 30px rgba(255,90,31,.3); }
-  .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 34px rgba(255,90,31,.42); }
+  .btn.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 8px 30px rgba(45,212,191,.3); }
+  .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 34px rgba(45,212,191,.42); }
   .btn.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
   .btn.ghost:hover { border-color: #3a3f4b; }
   .btn.small { padding: 8px 16px; font-size: 14px; }
@@ -42,8 +42,8 @@
   /* Первый экран */
   .hero { position: relative; display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 72px 0 80px; }
   .hero::before { content: ""; position: absolute; inset: -120px -200px auto auto; width: 620px; height: 620px; z-index: -1;
-                  background: radial-gradient(circle, rgba(255,90,31,.18), transparent 65%); }
-  .tag { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,90,31,.12); color: var(--accent);
+                  background: radial-gradient(circle, rgba(45,212,191,.18), transparent 65%); }
+  .tag { display: inline-flex; align-items: center; gap: 8px; background: rgba(45,212,191,.12); color: var(--accent);
          border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 14px; }
   h1 { font-size: clamp(40px, 6vw, 72px); line-height: 1.02; letter-spacing: -.04em; margin: 22px 0 20px; font-weight: 900; }
   h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text;
@@ -61,11 +61,11 @@
   .back { color: var(--accent); font-size: 14px; font-weight: 600; margin: 0 4px 10px; }
   .mhead { position: relative; height: 150px; border-radius: 18px; overflow: hidden; display: grid; place-items: center;
            background: radial-gradient(circle at 30% 20%, rgba(91,157,255,.35), transparent 55%),
-                       radial-gradient(circle at 80% 90%, rgba(255,90,31,.35), transparent 55%), #1a1d25; }
+                       radial-gradient(circle at 80% 90%, rgba(45,212,191,.35), transparent 55%), #1a1d25; }
   .mhead .sc { font-size: 54px; font-weight: 900; letter-spacing: -.03em; }
   .mhead .sc span { color: var(--muted); margin: 0 4px; }
   .mhead .map { position: absolute; left: 14px; bottom: 10px; font-weight: 800; font-size: 13px; letter-spacing: .12em; }
-  .badge { position: absolute; right: 12px; top: 12px; background: rgba(47,179,107,.18); color: var(--win);
+  .badge { position: absolute; right: 12px; top: 12px; background: rgba(74,222,128,.18); color: var(--win);
            font-weight: 700; font-size: 12px; border-radius: 999px; padding: 3px 10px; }
   .ptabs { display: flex; background: var(--panel); border-radius: 12px; padding: 3px; margin: 12px 0 10px; }
   .ptabs span { flex: 1; text-align: center; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 0; border-radius: 9px; }
@@ -74,7 +74,7 @@
           border-bottom: 1px solid var(--line); }
   .prow:first-of-type { border-radius: 12px 12px 0 0; }
   .prow:last-of-type { border-radius: 0 0 12px 12px; border-bottom: 0; }
-  .prow.me { background: #2a1f1a; }
+  .prow.me { background: #12302c; }
   .av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
   .prow .nm { flex: 1; }
   .prow .kd { color: var(--muted); font-size: 13px; }
@@ -96,7 +96,7 @@
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 24px; transition: .2s; }
   .card:hover { border-color: #3a3f4b; transform: translateY(-2px); }
   .card .ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 22px;
-              background: rgba(255,90,31,.12); margin-bottom: 16px; }
+              background: rgba(45,212,191,.12); margin-bottom: 16px; }
   .card h3 { margin: 0 0 6px; font-size: 19px; }
   .card p { margin: 0; color: var(--muted); font-size: 15px; }
 
@@ -104,11 +104,11 @@
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; counter-reset: s; }
   .step { background: linear-gradient(180deg, var(--panel), transparent); border: 1px solid var(--line); border-radius: 20px; padding: 26px; }
   .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 40px; height: 40px;
-                  border-radius: 50%; background: var(--accent); color: #fff; font-weight: 900; margin-bottom: 16px; }
+                  border-radius: 50%; background: var(--accent); color: var(--on-accent); font-weight: 900; margin-bottom: 16px; }
   .step h3 { margin: 0 0 6px; } .step p { margin: 0; color: var(--muted); font-size: 15px; }
 
   /* Финальный призыв */
-  .final { text-align: center; background: radial-gradient(circle at 50% 0%, rgba(255,90,31,.22), transparent 60%), var(--panel);
+  .final { text-align: center; background: radial-gradient(circle at 50% 0%, rgba(45,212,191,.22), transparent 60%), var(--panel);
            border: 1px solid var(--line); border-radius: 28px; padding: 60px 24px; }
   .final .cta { justify-content: center; }
   footer { color: var(--muted); font-size: 13px; padding: 30px 0 40px; border-top: 1px solid var(--line); margin-top: 40px;
@@ -149,7 +149,7 @@
         <a class="btn primary" href="/app">Начать бесплатно →</a>
         <a class="btn ghost" href="/auth/steam">Войти через Steam</a>
       </div>
-      <p style="color:var(--muted);margin:16px 0 0;font-size:15px"><img src="/static/coin.png" alt="" width="20" height="20" style="vertical-align:-4px"> Бесплатный старт — <b style="color:var(--text)">20 монет</b> при регистрации и бонус каждый день.</p>
+      <p style="color:var(--muted);margin:16px 0 0;font-size:15px"><img src="/static/coin.png?v=2" alt="" width="20" height="20" style="vertical-align:-4px"> Бесплатный старт — <b style="color:var(--text)">20 монет</b> при регистрации и бонус каждый день.</p>
       <div class="trust">
         <div><b>25+</b>показателей</div>
         <div><b>2D</b>реплей раундов</div>
@@ -168,10 +168,10 @@
           <div class="map">MIRAGE</div>
         </div>
         <div class="ptabs"><span class="on">Таблица</span><span>Раунды</span><span>Реплей</span></div>
-        <div class="prow me"><span class="av" style="background:#ff5a1f">N</span><span class="nm">Nuga_006</span><span class="kd">19/12</span><span class="rt good">1.75</span></div>
+        <div class="prow me"><span class="av" style="background:#2dd4bf">N</span><span class="nm">Nuga_006</span><span class="kd">19/12</span><span class="rt good">1.75</span></div>
         <div class="prow"><span class="av" style="background:#5b9dff">B</span><span class="nm">butya11kz</span><span class="kd">17/12</span><span class="rt good">1.45</span></div>
         <div class="prow"><span class="av" style="background:#7b4dff">N</span><span class="nm">nothuman33</span><span class="kd">14/11</span><span class="rt good">1.15</span></div>
-        <div class="prow"><span class="av" style="background:#2fb36b">S</span><span class="nm">Ser1kbaev</span><span class="kd">12/8</span><span class="rt good">1.11</span></div>
+        <div class="prow"><span class="av" style="background:#4ade80">S</span><span class="nm">Ser1kbaev</span><span class="kd">12/8</span><span class="rt good">1.11</span></div>
         <div class="prow"><span class="av" style="background:#e8b14a;color:#111">O</span><span class="nm">ODNUSHAURMU</span><span class="kd">11/13</span><span class="rt bad">0.87</span></div>
       </div>
     </div>
