@@ -204,6 +204,16 @@
            font-size: 18px; width: 44px; cursor: pointer; transition: .15s; }
   .hclip:hover { border-color: var(--accent); }
   .hclip:disabled { opacity: .5; cursor: wait; }
+  .cs2 { background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .cs2 h3 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+  .cs2 h3 button { background: none; border: 0; color: var(--muted); font-size: 20px; cursor: pointer; }
+  .cs2 ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+  .cs2 .muted { color: var(--muted); font-size: 12px; }
+  .cmd { display: flex; gap: 6px; margin-top: 5px; }
+  .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: #0b0d11; border: 1px solid var(--line);
+              border-radius: 8px; padding: 7px 10px; font: 13px ui-monospace, Consolas, monospace; color: #e8c547; }
+  .cmd button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 0 12px; font: inherit;
+                font-size: 13px; cursor: pointer; white-space: nowrap; }
   .clipnote { color: var(--muted); font-size: 12px; margin: -4px 0 12px; min-height: 16px; }
   .clipnote.rec { color: var(--lose); font-weight: 600; }
   .hcard { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; background: var(--panel);
@@ -288,106 +298,190 @@
     .pcard .nm { font-size: 16px; }
     .pcard img { width: 44px; height: 44px; }
   }
+
+  /* ---------- Каркас приложения ---------- */
+  body { background: #0b0c10; }
+  .topbar { position: sticky; top: 0; z-index: 20; background: rgba(11,12,16,.85); backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255,255,255,.06); }
+  .topin { max-width: 1100px; margin: 0 auto; padding: 0 16px; height: 60px; display: flex; align-items: center; gap: 22px; }
+  .logo { display: flex; align-items: center; gap: 9px; color: var(--text); text-decoration: none; font-size: 17px; letter-spacing: -.02em; }
+  .logo i { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #ff5a1f, #ffb020); color: #111;
+            display: grid; place-items: center; font-style: normal; font-weight: 900; font-size: 14px; }
+  .logo b span { color: var(--accent); }
+  .tnav { display: flex; gap: 18px; }
+  .tnav a { color: var(--muted); text-decoration: none; font-size: 15px; font-weight: 500; }
+  .tnav a:hover, .tnav a.on { color: var(--text); }
+  .mebar { margin: 0 0 0 auto !important; }
+  .mebar .mel { color: var(--muted); }
+  h2.first { margin-top: 0; }
+  #home { padding-top: 8px; }
+  .wrap { padding-top: 22px; }
+  .result { margin-top: 0; }
+
+  .back { display: inline-block; color: var(--accent); text-decoration: none; font-weight: 600; margin: 4px 0 12px; }
+  .back:hover { text-decoration: underline; }
+  .mhead { position: relative; min-height: 180px; border-radius: 22px; border: 1px solid var(--line); overflow: hidden;
+           padding: 22px 26px; display: flex; flex-direction: column; justify-content: flex-end; margin-bottom: 12px; }
+  .mhead .mmap { font-weight: 800; letter-spacing: .14em; font-size: 14px; color: #c9ccd3; }
+  .mhead .msc { font-size: 64px; font-weight: 900; letter-spacing: -.04em; line-height: 1.05; }
+  .mhead .msc span { color: var(--muted); margin: 0 6px; }
+  .mhead .msub { color: var(--muted); font-size: 14px; }
+  .mbadge { position: absolute; top: 18px; right: 18px; border-radius: 999px; padding: 4px 14px; font-weight: 700; font-size: 14px;
+            background: rgba(255,255,255,.08); color: var(--muted); }
+  .mbadge.win { background: rgba(47,179,107,.18); color: var(--win); }
+  .mbadge.lose { background: rgba(224,71,76,.18); color: var(--lose); }
+
+  .tabs { position: sticky; top: 60px; z-index: 15; display: flex; gap: 4px; background: rgba(24,27,34,.95); backdrop-filter: blur(8px);
+          border: 1px solid var(--line); border-radius: 14px; padding: 4px; margin: 6px 0 20px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: 1 0 auto; background: none; border: 0; color: var(--muted); font: inherit; font-weight: 600; font-size: 14px;
+                 padding: 9px 14px; border-radius: 10px; cursor: pointer; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button.on { background: #2a2f3a; color: var(--text); }
+  .pane { display: none; }
+  .pane.on { display: block; }
+
+  @media (max-width: 600px) {
+    .topin { gap: 12px; height: 56px; }
+    .logo b { display: none; }
+    .tnav { gap: 12px; }
+    .mebar .mel, #meNote { display: none; }
+    .mebar input { width: 120px; }
+    .tabs { top: 56px; }
+    .mhead { min-height: 150px; padding: 16px 18px; }
+    .mhead .msc { font-size: 48px; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Nuga <span>CS</span> Demo</h1>
-  <div class="sub">Загрузите демку CS2 с FACEIT — получите статистику, матрицу дуэлей и 2D-реплей.</div>
-  <div class="mebar">
-    <span>Мой ник:</span>
-    <input id="meInput" placeholder="например Nuga_006" autocomplete="off">
-    <span id="meNote"></span>
+<header class="topbar">
+  <div class="topin">
+    <a class="logo" href="/"><i>N</i><b>Nuga <span>CS</span> Demo</b></a>
+    <nav class="tnav">
+      <a href="/app" id="navHome">Матчи</a>
+      <a href="/app#upload" id="navUpload">Загрузить</a>
+    </nav>
+    <div class="mebar">
+      <span class="mel">Мой ник</span>
+      <input id="meInput" placeholder="например Nuga_006" autocomplete="off">
+      <span id="meNote"></span>
+    </div>
   </div>
+</header>
 
-  <h2 style="margin-top:0">Игрок FACEIT</h2>
-  <form class="search" id="search">
-    <input id="nick" placeholder="Введите ник на FACEIT, например Nuga_006" autocomplete="off">
-    <button type="submit">Найти</button>
-  </form>
-  <div id="player"></div>
+<div class="wrap">
+  <!-- ===== Главный экран приложения ===== -->
+  <section id="home">
+    <h2 class="first">Игрок FACEIT</h2>
+    <form class="search" id="search">
+      <input id="nick" placeholder="Введите ник на FACEIT, например Nuga_006" autocomplete="off">
+      <button type="submit">Найти</button>
+    </form>
+    <div id="player"></div>
 
-  <h2>Разобранные матчи</h2>
-  <div class="hist" id="history"></div>
+    <h2>Мои матчи</h2>
+    <div class="hist" id="history"></div>
 
-  <h2>Моя статистика</h2>
-  <div id="mystats"></div>
+    <h2>Моя статистика</h2>
+    <div id="mystats"></div>
 
-  <h2>Разбор демки</h2>
-  <label class="drop" id="drop">
-    <input type="file" id="file" accept=".dem,.gz,.zst">
-    <div><b>Выберите файл</b> или перетащите его сюда</div>
-    <small>.dem, .dem.gz или .dem.zst</small>
-  </label>
-  <div class="status" id="status"></div>
-  <div class="bar" id="bar"><div></div></div>
+    <h2 id="upload">Загрузить демку</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".dem,.gz,.zst">
+      <div><b>Выберите файл</b> или перетащите его сюда</div>
+      <small>.dem, .dem.gz или .dem.zst — демку можно скачать в комнате матча на FACEIT кнопкой «Watch demo»</small>
+    </label>
+    <div class="status" id="status"></div>
+    <div class="bar" id="bar"><div></div></div>
+  </section>
 
-  <div class="result" id="result">
+  <!-- ===== Страница матча ===== -->
+  <section class="result" id="result">
+    <a class="back" href="/app" id="back">‹ Матчи</a>
+    <div class="mhead" id="mhead"></div>
     <div class="meta" id="meta"></div>
 
-    <h2>Хайлайты</h2>
-    <div class="hl" id="highlights"></div>
-    <div class="clipnote" id="clipNote">🎬 — скачать видео-клип момента</div>
+    <div class="tabs" id="tabs">
+      <button data-tab="table" class="on">Таблица</button>
+      <button data-tab="rounds">Раунды</button>
+      <button data-tab="replay">Реплей</button>
+      <button data-tab="highlights">Хайлайты</button>
+      <button data-tab="player">Игрок</button>
+    </div>
 
-    <h2>2D-реплей</h2>
-    <div class="score" id="score"></div>
-    <div class="rounds" id="rounds"></div>
-    <div class="replay">
-      <div class="stage">
-        <canvas id="canvas" width="1024" height="1024"></canvas>
-        <div class="controls">
-          <button id="play">▶ Play</button>
-          <select id="speed">
-            <option value="1" selected>1x</option>
-            <option value="2">2x</option>
-            <option value="4">4x</option>
-            <option value="8">8x</option>
-          </select>
-          <input type="range" id="seek" min="0" max="0" step="0.01" value="0">
-          <span class="time" id="time">0:00</span>
-        </div>
-        <div class="note" id="radarNote"></div>
-      </div>
-      <div class="side">
-        <div id="teams"></div>
-        <div class="feed">
-          <h3>Киллфид раунда</h3>
-          <div id="feed"></div>
+    <div class="pane" data-pane="table">
+      <h2 class="first">Статистика игроков</h2>
+      <div class="scroll"><table id="stats"></table></div>
+      <h2>Матрица дуэлей</h2>
+      <div class="sub" style="margin:0 0 10px">Число слева — сколько раз игрок строки убил игрока столбца, справа — наоборот.</div>
+      <div class="scroll"><table class="duel" id="duels"></table></div>
+    </div>
+
+    <div class="pane" data-pane="rounds">
+      <h2 class="first">Экономика по раундам</h2>
+      <div class="eco"><div id="eco"></div>
+        <div class="eco-legend">
+          <span>Высота столбика — стоимость закупки команды</span>
+          <span><b>П</b> — пистолетка · <b>Э</b> — эко · <b>Ф</b> — форс · <b>FB</b> — фулл-бай</span>
+          <span>Зелёная метка — команда выиграла раунд · клик — открыть раунд в реплее</span>
         </div>
       </div>
     </div>
 
-    <h2>Экономика</h2>
-    <div class="eco"><div id="eco"></div>
-      <div class="eco-legend">
-        <span>Высота столбика — стоимость закупки команды</span>
-        <span><b>П</b> — пистолетка · <b>Э</b> — эко · <b>Ф</b> — форс · <b>FB</b> — фулл-бай</span>
-        <span>Зелёная метка — команда выиграла раунд</span>
+    <div class="pane" data-pane="replay">
+      <div class="score" id="score"></div>
+      <div class="rounds" id="rounds"></div>
+      <div class="replay">
+        <div class="stage">
+          <canvas id="canvas" width="1024" height="1024"></canvas>
+          <div class="controls">
+            <button id="play">▶ Play</button>
+            <select id="speed">
+              <option value="1" selected>1x</option>
+              <option value="2">2x</option>
+              <option value="4">4x</option>
+              <option value="8">8x</option>
+            </select>
+            <input type="range" id="seek" min="0" max="0" step="0.01" value="0">
+            <span class="time" id="time">0:00</span>
+          </div>
+          <div class="note" id="radarNote"></div>
+        </div>
+        <div class="side">
+          <div id="teams"></div>
+          <div class="feed">
+            <h3>Киллфид раунда</h3>
+            <div id="feed"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <h2>Статистика игроков</h2>
-    <div class="scroll"><table id="stats"></table></div>
-    <h2 id="playerTitle">Разбор игрока</h2>
-    <div class="pctrl">
-      <select id="pSel"></select>
-      <div class="seg" id="hMode">
-        <button data-m="kills" class="on">Где убивал</button>
-        <button data-m="deaths">Где умирал</button>
-      </div>
-    </div>
-    <div class="pgrid">
-      <div class="stage">
-        <canvas id="heat" width="1024" height="1024"></canvas>
-        <div class="note" id="heatNote"></div>
-      </div>
-      <div id="pinfo"></div>
+    <div class="pane" data-pane="highlights">
+      <h2 class="first">Хайлайты</h2>
+      <div class="hl" id="highlights"></div>
+      <div class="clipnote" id="clipNote">🎬 — скачать 2D-клип момента · 🎮 — посмотреть момент в самой CS2</div>
+      <div id="cs2Panel"></div>
     </div>
 
-    <h2>Матрица дуэлей</h2>
-    <div class="sub" style="margin:0 0 10px">Число слева — сколько раз игрок строки убил игрока столбца, справа — наоборот.</div>
-    <div class="scroll"><table class="duel" id="duels"></table></div>
-  </div>
+    <div class="pane" data-pane="player">
+      <h2 class="first" id="playerTitle">Разбор игрока</h2>
+      <div class="pctrl">
+        <select id="pSel"></select>
+        <div class="seg" id="hMode">
+          <button data-m="kills" class="on">Где убивал</button>
+          <button data-m="deaths">Где умирал</button>
+        </div>
+      </div>
+      <div class="pgrid">
+        <div class="stage">
+          <canvas id="heat" width="1024" height="1024"></canvas>
+          <div class="note" id="heatNote"></div>
+        </div>
+        <div id="pinfo"></div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -436,6 +530,62 @@ function teamLabel(data, ti) {
   const mi = myIndex(data);
   if (mi < 0) return `Команда ${ti + 1}`;
   return data.players[mi].team === teams[ti] ? "Моя команда" : "Соперники";
+}
+
+// ---------- Вкладки страницы матча ----------
+let TAB = "table";
+function setTab(name) {
+  TAB = name;
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("on", p.dataset.pane === name));
+  if (name !== "replay" && !R.clip) stop();          // ушли с реплея — ставим на паузу
+  if (name === "replay") draw();                      // холст был скрыт — перерисовать под новый размер
+  if (name === "player") drawHeat();
+}
+document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => {
+  setTab(b.dataset.tab);
+  window.scrollTo({ top: $("tabs").offsetTop - 70, behavior: "smooth" });
+}));
+
+function showHome() {
+  stop();
+  $("result").style.display = "none";
+  $("home").style.display = "";
+  $("cs2Panel").innerHTML = "";
+  document.title = "Nuga CS Demo";
+  window.scrollTo({ top: 0 });
+}
+$("back").addEventListener("click", (e) => {
+  e.preventDefault();
+  history.pushState({}, "", "/app");
+  showHome();
+});
+$("navUpload").addEventListener("click", (e) => {
+  if ($("home").style.display === "none") { e.preventDefault(); history.pushState({}, "", "/app"); showHome(); }
+  setTimeout(() => $("upload").scrollIntoView({ behavior: "smooth" }), 50);
+});
+$("navHome").addEventListener("click", (e) => { e.preventDefault(); history.pushState({}, "", "/app"); showHome(); });
+
+// Шапка матча: карта, счёт с моей стороны и «Победа/Поражение»
+function renderHeader(data) {
+  const teams = [...new Set(data.players.map((p) => p.team))].sort();
+  const won = [0, 0];
+  R.roundWinners.forEach((w) => { if (w >= 0) won[w]++; });
+  const mi = myIndex(data);
+  let a = won[0], b = won[1], badge = "", sub = `${data.rounds} раундов`;
+  if (mi >= 0) {
+    const my = teams.indexOf(data.players[mi].team);
+    a = won[my]; b = won[1 - my];
+    badge = a > b ? `<span class="mbadge win">Победа</span>` : a < b ? `<span class="mbadge lose">Поражение</span>` : `<span class="mbadge">Ничья</span>`;
+  }
+  const map = mapTitle(data.map);
+  $("mhead").style.background =
+    `linear-gradient(90deg, rgba(11,12,16,.96) 35%, rgba(11,12,16,.55)), ` +
+    `url("/static/maps/${encodeURIComponent(data.map)}.png") right -40px center / 360px auto no-repeat, ` +
+    `radial-gradient(circle at 85% 20%, rgba(255,90,31,.25), transparent 55%), #15171d`;
+  $("mhead").innerHTML = `${badge}<div class="mmap">${esc(map.toUpperCase())}</div>` +
+    `<div class="msc">${a}<span>:</span>${b}</div><div class="msub">${sub}</div>`;
+  document.title = `${map} ${a}:${b} — Nuga CS Demo`;
 }
 
 // ---------- Сохранённые матчи ----------
@@ -574,9 +724,10 @@ async function openMatch(id, push) {
 
 // Показать разбор и поменять адрес страницы на /match/<id>, чтобы им можно было поделиться
 function showMatch(data, push) {
+  TAB = "table";                      // новый матч открываем на вкладке «Таблица»
   render(data);
   if (data.id && push) history.pushState({ id: data.id }, "", `/match/${data.id}`);
-  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+  window.scrollTo({ top: 0 });
 }
 
 async function copyLink(id) {
@@ -593,7 +744,7 @@ async function copyLink(id) {
 window.addEventListener("popstate", () => {
   const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
   if (m) openMatch(m[1], false);
-  else { stop(); $("result").style.display = "none"; window.scrollTo({ top: 0 }); }
+  else showHome();
 });
 
 // ---------- Поиск игрока FACEIT ----------
@@ -714,8 +865,6 @@ function render(data) {
   const teamName = (i) => teamLabel(data, i);
 
   $("meta").innerHTML =
-    `<div class="chip">Карта: <b>${esc(data.map)}</b></div>` +
-    `<div class="chip">Раундов: <b>${data.rounds}</b></div>` +
     (data.id ? `<button class="chip btn" id="copyLink">🔗 Скопировать ссылку на матч</button>` : "");
   if (data.id) $("copyLink").addEventListener("click", () => copyLink(data.id));
 
@@ -760,7 +909,10 @@ function render(data) {
   }
 
   $("result").style.display = "block";
+  $("home").style.display = "none";
   setupReplay(data);
+  renderHeader(data);
+  setTab(TAB);
 }
 
 // ---------- 2D-реплей ----------
@@ -1016,6 +1168,7 @@ function setupPlayer(data) {
 }
 
 function selectPlayer(i) {
+  setTab("player");
   H.player = i;
   $("pSel").value = String(i);
   drawHeat();
@@ -1204,6 +1357,7 @@ function renderEconomy(data) {
   html += `<div></div>` + rounds.map((_, ri) => `<div class="eco-rn">${ri + 1}</div>`).join("") + `</div>`;
   $("eco").innerHTML = html;
   $("eco").querySelectorAll(".ecell").forEach((c) => c.addEventListener("click", () => {
+    setTab("replay");
     selectRound(+c.dataset.r);
     document.querySelector(".replay").scrollIntoView({ behavior: "smooth", block: "center" });
   }));
@@ -1221,17 +1375,22 @@ function renderHighlights(data) {
     `<div class="hitem"><button class="hcard" data-i="${i}"><span class="bd ${badge(h.type)}">${esc(h.type)}</span>` +
     `<span><div class="hn">${esc(data.players[h.player]?.name ?? "?")}</div>` +
     `<div class="hs">Раунд ${h.round + 1} · ${esc(h.detail)}</div></span></button>` +
-    `<button class="hclip" data-i="${i}" title="Скачать видео-клип">🎬</button></div>`).join("");
+    `<button class="hclip" data-i="${i}" title="Скачать 2D-клип">🎬</button>` +
+    `<button class="hclip hcs2" data-i="${i}" title="Открыть момент в CS2">🎮</button></div>`).join("");
   $("highlights").querySelectorAll(".hcard").forEach((b) =>
     b.addEventListener("click", () => jumpTo(list[+b.dataset.i])));
-  $("highlights").querySelectorAll(".hclip").forEach((b) =>
+  $("highlights").querySelectorAll(".hclip:not(.hcs2)").forEach((b) =>
     b.addEventListener("click", () => recordClip(list[+b.dataset.i])));
+  $("highlights").querySelectorAll(".hcs2").forEach((b) =>
+    b.addEventListener("click", () => showCs2(list[+b.dataset.i])));
+  $("cs2Panel").innerHTML = "";
 }
 
 // ---------- Видео-клипы ----------
 // Записываем то, что рисуется на карте, прямо в браузере: canvas → поток видео → MediaRecorder → файл
 async function recordClip(h) {
   if (R.clip) return;                                   // уже идёт запись
+  setTab("replay");
   if (!window.MediaRecorder || !canvas.captureStream) {
     $("clipNote").textContent = "Этот браузер не умеет записывать видео — попробуйте Chrome";
     return;
@@ -1266,7 +1425,7 @@ async function recordClip(h) {
   rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   const stopped = new Promise((resolve) => (rec.onstop = resolve));
 
-  const buttons = $("highlights").querySelectorAll(".hclip");
+  const buttons = $("highlights").querySelectorAll(".hclip:not(.hcs2)");
   buttons.forEach((b) => (b.disabled = true));
   $("clipNote").textContent = `● Идёт запись клипа (~${Math.ceil(seconds / R.clip.speed)} сек). Не переключайте вкладку.`;
   $("clipNote").classList.add("rec");
@@ -1292,6 +1451,53 @@ async function recordClip(h) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   $("clipNote").textContent = `✅ Клип сохранён: ${a.download}`;
+}
+
+// ---------- Момент в CS2 ----------
+// Готовим команды консоли: перемотать демку к моменту и включить вид от первого лица нужного игрока
+function showCs2(h) {
+  const r = R.data.replay.rounds[h.round];
+  const name = R.data.players[h.player].name;
+  const myKills = r.kills.filter((k) => k.attacker === name).map((k) => k.tick);
+  const startTick = Math.max(r.start, h.tick - 3 * TICKRATE);
+  const endTick = h.type.startsWith("1v") ? r.end : Math.max(h.tick, ...myKills) + 2 * TICKRATE;
+  const seconds = Math.ceil((endTick - startTick) / TICKRATE);
+
+  const folder = String.raw`C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\replays`;
+  const load = "playdemo replays/nuga";
+  // sv_cheats 1 в просмотре демки разрешён — он нужен, чтобы спрятать интерфейс
+  const jump = `sv_cheats 1; demo_timescale 1; demo_gototick ${startTick}; spec_mode 1; spec_player "${name.replace(/"/g, "")}"; cl_draw_only_deathnotices 1`;
+  const reset = "cl_draw_only_deathnotices 0";
+
+  const cmd = (id, text) => `<div class="cmd"><code id="${id}">${esc(text)}</code>` +
+    `<button data-copy="${id}">Копировать</button></div>`;
+
+  $("cs2Panel").innerHTML = `<div class="cs2">
+    <h3><span>🎮 ${esc(h.type)} · ${esc(name)} · раунд ${h.round + 1} — в CS2</span><button id="cs2Close" title="Закрыть">×</button></h3>
+    <ol>
+      <li>Распакуйте демку этого матча в файл <b>.dem</b>, назовите её <b>nuga.dem</b> и положите в папку игры:
+        ${cmd("cs2Folder", folder)}
+        <div class="muted">Если Steam стоит в другом месте — Steam → CS2 → «Управление» → «Просмотреть локальные файлы», дальше game\\csgo\\replays. Распаковать .dem.zst можно через NanaZip или 7-Zip ZS.</div></li>
+      <li>Запустите CS2, откройте консоль (клавиша <b>~</b>) и загрузите демку:
+        ${cmd("cs2Load", load)}</li>
+      <li>Когда демка загрузится, вставьте в консоль команду — она перемотает к моменту и включит вид от лица ${esc(name)}:
+        ${cmd("cs2Jump", jump)}
+        <div class="muted">Если камера осталась на другом игроке — нажимайте <b>пробел</b> или кликайте мышью, пока не появится ${esc(name)}.</div></li>
+      <li>Записывайте экран примерно <b>${seconds} сек</b>: <b>Win+Alt+R</b> (запись Windows), <b>Alt+F9</b> (NVIDIA) или OBS.</li>
+      <li>Вернуть интерфейс игры:
+        ${cmd("cs2Reset", reset)}</li>
+    </ol>
+    <div class="muted" style="margin-top:10px">CS2 открывает только демки текущей версии игры: после крупного обновления старые матчи могут не запуститься.</div>
+  </div>`;
+
+  $("cs2Close").addEventListener("click", () => ($("cs2Panel").innerHTML = ""));
+  $("cs2Panel").querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+    const text = $(b.dataset.copy).textContent;
+    try { await navigator.clipboard.writeText(text); b.textContent = "✓"; }
+    catch { prompt("Скопируйте:", text); }
+    setTimeout(() => (b.textContent = "Копировать"), 1500);
+  }));
+  $("cs2Panel").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 // Надписи поверх карты, которые видны только в клипе
@@ -1341,6 +1547,7 @@ function roundRect(x, y, w, h, rad) {
 }
 
 function jumpTo(h) {
+  setTab("replay");
   selectRound(h.round);
   const r = R.data.replay.rounds[h.round];
   const from = h.tick - 3 * TICKRATE;

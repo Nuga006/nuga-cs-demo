@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuga CS Demo — разбор матчей CS2</title>
+<meta name="description" content="Загрузи демку CS2 с FACEIT — получи рейтинг, хайлайты, экономику и 2D-реплей каждого раунда.">
+<style>
+  :root {
+    --bg: #0b0c10; --panel: #15171d; --panel2: #1b1e26; --line: #262a33;
+    --text: #eceef2; --muted: #8b909c; --accent: #ff5a1f; --accent2: #ffb020;
+    --win: #2fb36b; --lose: #e0474c; --t: #e8b14a; --ct: #5b9dff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; overflow-x: hidden; }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
+
+  /* Шапка */
+  header { position: sticky; top: 0; z-index: 10; background: rgba(11,12,16,.78); backdrop-filter: blur(10px);
+           border-bottom: 1px solid rgba(255,255,255,.05); }
+  .nav { display: flex; align-items: center; gap: 24px; height: 64px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -.02em; }
+  .logo i { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), var(--accent2));
+            display: grid; place-items: center; font-style: normal; color: #111; font-size: 15px; font-weight: 900; }
+  .logo span { color: var(--accent); }
+  .nav .links { display: flex; gap: 22px; margin-left: 12px; color: var(--muted); font-size: 15px; }
+  .nav .links a:hover { color: var(--text); }
+  .nav .right { margin-left: auto; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; padding: 12px 22px;
+         font-weight: 700; font-size: 16px; border: 0; cursor: pointer; transition: .15s; }
+  .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 8px 30px rgba(255,90,31,.3); }
+  .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 34px rgba(255,90,31,.42); }
+  .btn.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  .btn.ghost:hover { border-color: #3a3f4b; }
+  .btn.small { padding: 8px 16px; font-size: 14px; }
+  .short { display: none; }
+  .soon { font-size: 11px; font-weight: 700; background: rgba(255,255,255,.08); color: var(--muted); border-radius: 6px; padding: 2px 6px; }
+
+  /* Первый экран */
+  .hero { position: relative; display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 72px 0 80px; }
+  .hero::before { content: ""; position: absolute; inset: -120px -200px auto auto; width: 620px; height: 620px; z-index: -1;
+                  background: radial-gradient(circle, rgba(255,90,31,.18), transparent 65%); }
+  .tag { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,90,31,.12); color: var(--accent);
+         border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 14px; }
+  h1 { font-size: clamp(40px, 6vw, 72px); line-height: 1.02; letter-spacing: -.04em; margin: 22px 0 20px; font-weight: 900; }
+  h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text;
+          background-clip: text; color: transparent; }
+  .lead { color: var(--muted); font-size: 19px; max-width: 560px; margin: 0 0 30px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .trust { display: flex; gap: 22px; margin-top: 30px; color: var(--muted); font-size: 14px; flex-wrap: wrap; }
+  .trust b { color: var(--text); font-size: 20px; display: block; }
+
+  /* Телефон с примером */
+  .phone { justify-self: center; width: 320px; border-radius: 42px; padding: 12px; background: #050608;
+           border: 1px solid #2a2d35; box-shadow: 0 40px 80px rgba(0,0,0,.6), 0 0 0 6px #111318; position: relative; }
+  .screen { border-radius: 32px; background: var(--bg); overflow: hidden; padding: 16px 14px 18px; }
+  .screen .top { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 12px; padding: 0 6px; }
+  .back { color: var(--accent); font-size: 14px; font-weight: 600; margin: 0 4px 10px; }
+  .mhead { position: relative; height: 150px; border-radius: 18px; overflow: hidden; display: grid; place-items: center;
+           background: radial-gradient(circle at 30% 20%, rgba(91,157,255,.35), transparent 55%),
+                       radial-gradient(circle at 80% 90%, rgba(255,90,31,.35), transparent 55%), #1a1d25; }
+  .mhead .sc { font-size: 54px; font-weight: 900; letter-spacing: -.03em; }
+  .mhead .sc span { color: var(--muted); margin: 0 4px; }
+  .mhead .map { position: absolute; left: 14px; bottom: 10px; font-weight: 800; font-size: 13px; letter-spacing: .12em; }
+  .badge { position: absolute; right: 12px; top: 12px; background: rgba(47,179,107,.18); color: var(--win);
+           font-weight: 700; font-size: 12px; border-radius: 999px; padding: 3px 10px; }
+  .ptabs { display: flex; background: var(--panel); border-radius: 12px; padding: 3px; margin: 12px 0 10px; }
+  .ptabs span { flex: 1; text-align: center; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 0; border-radius: 9px; }
+  .ptabs span.on { background: var(--panel2); color: var(--text); }
+  .prow { display: flex; align-items: center; gap: 10px; background: var(--panel); padding: 9px 12px; font-size: 14px;
+          border-bottom: 1px solid var(--line); }
+  .prow:first-of-type { border-radius: 12px 12px 0 0; }
+  .prow:last-of-type { border-radius: 0 0 12px 12px; border-bottom: 0; }
+  .prow.me { background: #2a1f1a; }
+  .av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
+  .prow .nm { flex: 1; }
+  .prow .kd { color: var(--muted); font-size: 13px; }
+  .prow .rt { font-weight: 800; width: 38px; text-align: right; }
+  .good { color: var(--win); } .bad { color: var(--lose); }
+  .toast { position: absolute; top: -28px; right: -80px; width: 250px; background: rgba(27,30,38,.95); border: 1px solid var(--line);
+           border-radius: 16px; padding: 10px 14px; display: flex; gap: 10px; align-items: center;
+           box-shadow: 0 20px 40px rgba(0,0,0,.5); animation: float 4s ease-in-out infinite; }
+  .toast .ic { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2));
+               display: grid; place-items: center; font-size: 18px; flex: 0 0 auto; }
+  .toast b { font-size: 14px; display: block; } .toast small { color: var(--muted); font-size: 12px; }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+
+  /* Возможности */
+  section { padding: 70px 0; }
+  .h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.03em; font-weight: 900; margin: 0 0 10px; }
+  .sub { color: var(--muted); font-size: 18px; margin: 0 0 36px; max-width: 620px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 24px; transition: .2s; }
+  .card:hover { border-color: #3a3f4b; transform: translateY(-2px); }
+  .card .ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 22px;
+              background: rgba(255,90,31,.12); margin-bottom: 16px; }
+  .card h3 { margin: 0 0 6px; font-size: 19px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  /* Как это работает */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; counter-reset: s; }
+  .step { background: linear-gradient(180deg, var(--panel), transparent); border: 1px solid var(--line); border-radius: 20px; padding: 26px; }
+  .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 40px; height: 40px;
+                  border-radius: 50%; background: var(--accent); color: #fff; font-weight: 900; margin-bottom: 16px; }
+  .step h3 { margin: 0 0 6px; } .step p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  /* Финальный призыв */
+  .final { text-align: center; background: radial-gradient(circle at 50% 0%, rgba(255,90,31,.22), transparent 60%), var(--panel);
+           border: 1px solid var(--line); border-radius: 28px; padding: 60px 24px; }
+  .final .cta { justify-content: center; }
+  footer { color: var(--muted); font-size: 13px; padding: 30px 0 40px; border-top: 1px solid var(--line); margin-top: 40px;
+           display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; padding: 40px 0 50px; }
+    .toast { right: -10px; top: -20px; }
+    .grid, .steps { grid-template-columns: 1fr; }
+    .nav .links { display: none; }
+  }
+  @media (max-width: 420px) {
+    .phone { width: 290px; }
+    .cta .btn { width: 100%; justify-content: center; }
+    .long { display: none; } .short { display: inline; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="/"><i>N</i>Nuga<span>CS</span>Demo</a>
+    <nav class="links">
+      <a href="#features">Возможности</a>
+      <a href="#how">Как это работает</a>
+    </nav>
+    <div class="right"><a class="btn ghost small" href="/app"><span class="long">Открыть приложение</span><span class="short">Открыть</span></a></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <div>
+      <span class="tag">● Разбор матчей CS2</span>
+      <h1>Твой матч —<br>как <em>на ладони</em>.</h1>
+      <p class="lead">Загрузи демку с FACEIT и через минуту увидишь рейтинг каждого игрока, лучшие моменты, экономику раундов и 2D-реплей всей игры.</p>
+      <div class="cta">
+        <a class="btn primary" href="/app">Начать бесплатно →</a>
+        <span class="btn ghost" title="Скоро">Войти через Steam <span class="soon">скоро</span></span>
+      </div>
+      <div class="trust">
+        <div><b>25+</b>показателей</div>
+        <div><b>2D</b>реплей раундов</div>
+        <div><b>MP4</b>клипы хайлайтов</div>
+      </div>
+    </div>
+
+    <div class="phone" aria-hidden="true">
+      <div class="toast"><div class="ic">🎬</div><div><b>Клип готов</b><small>4K · Mirage · раунд 9</small></div></div>
+      <div class="screen">
+        <div class="top"><span>21:47</span><span>●●● 5G</span></div>
+        <div class="back">‹ Матчи</div>
+        <div class="mhead">
+          <span class="badge">Победа</span>
+          <div class="sc">13<span>:</span>4</div>
+          <div class="map">MIRAGE</div>
+        </div>
+        <div class="ptabs"><span class="on">Таблица</span><span>Раунды</span><span>Реплей</span></div>
+        <div class="prow me"><span class="av" style="background:#ff5a1f">N</span><span class="nm">Nuga_006</span><span class="kd">19/12</span><span class="rt good">1.75</span></div>
+        <div class="prow"><span class="av" style="background:#5b9dff">B</span><span class="nm">butya11kz</span><span class="kd">17/12</span><span class="rt good">1.45</span></div>
+        <div class="prow"><span class="av" style="background:#7b4dff">N</span><span class="nm">nothuman33</span><span class="kd">14/11</span><span class="rt good">1.15</span></div>
+        <div class="prow"><span class="av" style="background:#2fb36b">S</span><span class="nm">Ser1kbaev</span><span class="kd">12/8</span><span class="rt good">1.11</span></div>
+        <div class="prow"><span class="av" style="background:#e8b14a;color:#111">O</span><span class="nm">ODNUSHAURMU</span><span class="kd">11/13</span><span class="rt bad">0.87</span></div>
+      </div>
+    </div>
+  </div>
+
+  <section id="features">
+    <h2 class="h2">Всё, что было в матче</h2>
+    <p class="sub">Не нужно пересматривать демку целиком — сайт сам найдёт, что важно.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">📊</div><h3>Статистика уровня HLTV</h3><p>Rating, ADR, KAST, entry-дуэли, урон гранатами и матрица дуэлей «кто кого».</p></div>
+      <div class="card"><div class="ic">🗺️</div><h3>2D-реплей</h3><p>Каждый раунд на радаре: движение, взгляд, HP, гранаты, выстрелы и бомба.</p></div>
+      <div class="card"><div class="ic">🔥</div><h3>Хайлайты</h3><p>Эйсы, 4K и выигранные клатчи находятся автоматически — в один клик к моменту.</p></div>
+      <div class="card"><div class="ic">🎬</div><h3>Клипы</h3><p>Скачай видео любого хайлайта и отправь друзьям или выложи в сторис.</p></div>
+      <div class="card"><div class="ic">💰</div><h3>Экономика</h3><p>Пистолетки, эко, форсы и фулл-баи по раундам — видно, где сломалась игра.</p></div>
+      <div class="card"><div class="ic">🎯</div><h3>Твой прогресс</h3><p>Хитмапы, любимое оружие, винрейт по картам и график рейтинга по матчам.</p></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <h2 class="h2">Три шага</h2>
+    <p class="sub">Никаких программ и настроек — всё в браузере, с компьютера или телефона.</p>
+    <div class="steps">
+      <div class="step"><h3>Найди матч</h3><p>Введи свой ник FACEIT — увидишь ELO и последние игры со ссылкой на каждую.</p></div>
+      <div class="step"><h3>Загрузи демку</h3><p>Нажми «Watch demo» на FACEIT и перетащи файл на сайт. Даже 200 МБ — не проблема.</p></div>
+      <div class="step"><h3>Разбирай</h3><p>Таблица, раунды, реплей и хайлайты готовы. Поделись ссылкой на матч с командой.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="final">
+      <h2 class="h2">Готов разобрать свой матч?</h2>
+      <p class="sub" style="margin:0 auto 28px">Это бесплатно. Первая демка — прямо сейчас.</p>
+      <div class="cta"><a class="btn primary" href="/app">Открыть Nuga CS Demo →</a></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>© 2026 Nuga CS Demo · сделано Nuga006</span>
+    <span>Проект не связан с Valve и FACEIT.</span>
+  </footer>
+</main>
+</body>
+</html>

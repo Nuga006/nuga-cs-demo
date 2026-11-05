@@ -54,8 +54,14 @@ app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 
 @app.get("/")
+def landing():
+    """Главная страница — рассказ о сервисе."""
+    return FileResponse(BASE / "static" / "landing.html")
+
+
+@app.get("/app")
 def index():
-    """Главная страница сайта."""
+    """Само приложение: мои матчи, статистика, загрузка демки."""
     return FileResponse(BASE / "static" / "index.html")
 
 
