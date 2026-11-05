@@ -199,6 +199,13 @@
   .hl::-webkit-scrollbar-track { background: transparent; }
   .hl::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
   .hl::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  .hitem { flex: 0 0 auto; display: flex; gap: 4px; }
+  .hclip { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; color: var(--text);
+           font-size: 18px; width: 44px; cursor: pointer; transition: .15s; }
+  .hclip:hover { border-color: var(--accent); }
+  .hclip:disabled { opacity: .5; cursor: wait; }
+  .clipnote { color: var(--muted); font-size: 12px; margin: -4px 0 12px; min-height: 16px; }
+  .clipnote.rec { color: var(--lose); font-weight: 600; }
   .hcard { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; background: var(--panel);
            border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; cursor: pointer;
            color: var(--text); font: inherit; text-align: left; transition: .15s; }
@@ -320,6 +327,7 @@
 
     <h2>Хайлайты</h2>
     <div class="hl" id="highlights"></div>
+    <div class="clipnote" id="clipNote">🎬 — скачать видео-клип момента</div>
 
     <h2>2D-реплей</h2>
     <div class="score" id="score"></div>
@@ -985,6 +993,8 @@ function draw() {
     }
   });
 
+  if (R.clip) drawClipOverlay(r, curTick);
+
   // Время раунда и киллфид
   $("time").textContent = fmtTime((curTick - r.start) / TICKRATE);
   $("seek").value = R.pos;
@@ -1208,11 +1218,126 @@ function renderHighlights(data) {
   }
   const badge = (t) => (t === "ACE" ? "ace" : t === "4K" ? "k4" : t === "3K" ? "k3" : "cl");
   $("highlights").innerHTML = list.map((h, i) =>
-    `<button class="hcard" data-i="${i}"><span class="bd ${badge(h.type)}">${esc(h.type)}</span>` +
+    `<div class="hitem"><button class="hcard" data-i="${i}"><span class="bd ${badge(h.type)}">${esc(h.type)}</span>` +
     `<span><div class="hn">${esc(data.players[h.player]?.name ?? "?")}</div>` +
-    `<div class="hs">Раунд ${h.round + 1} · ${esc(h.detail)}</div></span></button>`).join("");
+    `<div class="hs">Раунд ${h.round + 1} · ${esc(h.detail)}</div></span></button>` +
+    `<button class="hclip" data-i="${i}" title="Скачать видео-клип">🎬</button></div>`).join("");
   $("highlights").querySelectorAll(".hcard").forEach((b) =>
     b.addEventListener("click", () => jumpTo(list[+b.dataset.i])));
+  $("highlights").querySelectorAll(".hclip").forEach((b) =>
+    b.addEventListener("click", () => recordClip(list[+b.dataset.i])));
+}
+
+// ---------- Видео-клипы ----------
+// Записываем то, что рисуется на карте, прямо в браузере: canvas → поток видео → MediaRecorder → файл
+async function recordClip(h) {
+  if (R.clip) return;                                   // уже идёт запись
+  if (!window.MediaRecorder || !canvas.captureStream) {
+    $("clipNote").textContent = "Этот браузер не умеет записывать видео — попробуйте Chrome";
+    return;
+  }
+  const r = R.data.replay.rounds[h.round];
+  const name = R.data.players[h.player].name;
+
+  // Начало — за 3 секунды до момента. Конец: для мульти-килла — через 2 секунды после последнего убийства,
+  // для клатча — конец раунда
+  const myKills = r.kills.filter((k) => k.attacker === name).map((k) => k.tick);
+  const endTick = h.type.startsWith("1v") ? r.end : Math.max(h.tick, ...myKills) + 2 * TICKRATE;
+  const posOf = (tick) => { const i = r.ticks.findIndex((t) => t >= tick); return i < 0 ? r.ticks.length - 1 : i; };
+  selectRound(h.round);
+  const startPos = Math.max(0, posOf(h.tick - 3 * TICKRATE));
+  const endPos = Math.max(startPos + 1, posOf(endTick));
+  const seconds = ((endPos - startPos) * R.data.replay.step) / TICKRATE;
+
+  R.clip = {
+    endPos,
+    speed: seconds > 30 ? 2 : 1,                        // длинные клатчи ускоряем, чтобы клип был не больше ~30 секунд
+    title: `${h.type} · ${name}`,
+    sub: `Раунд ${h.round + 1} · ${mapTitle(R.data.map)}`,
+  };
+  R.pos = startPos;
+  draw();
+
+  const mime = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"]
+    .find((t) => MediaRecorder.isTypeSupported(t)) || "";
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  const rec = new MediaRecorder(canvas.captureStream(30), mime ? { mimeType: mime, videoBitsPerSecond: 6_000_000 } : undefined);
+  const chunks = [];
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  const stopped = new Promise((resolve) => (rec.onstop = resolve));
+
+  const buttons = $("highlights").querySelectorAll(".hclip");
+  buttons.forEach((b) => (b.disabled = true));
+  $("clipNote").textContent = `● Идёт запись клипа (~${Math.ceil(seconds / R.clip.speed)} сек). Не переключайте вкладку.`;
+  $("clipNote").classList.add("rec");
+  document.querySelector(".replay").scrollIntoView({ behavior: "smooth", block: "center" });
+
+  rec.start(250);
+  play();
+  // Ждём, пока реплей дойдёт до конца клипа
+  while (R.playing) await new Promise((res) => setTimeout(res, 100));
+  await new Promise((res) => setTimeout(res, 400));    // пара кадров «стоп-кадра» в конце
+  rec.stop();
+  await stopped;
+
+  R.clip = null;
+  draw();
+  buttons.forEach((b) => (b.disabled = false));
+  $("clipNote").classList.remove("rec");
+
+  const blob = new Blob(chunks, { type: mime || "video/webm" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `nuga-${h.type}-${name}-round${h.round + 1}.${ext}`.replace(/[^\w.\-]+/g, "_");
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  $("clipNote").textContent = `✅ Клип сохранён: ${a.download}`;
+}
+
+// Надписи поверх карты, которые видны только в клипе
+function drawClipOverlay(r, curTick) {
+  const W = canvas.width;
+  ctx.save();
+  ctx.textAlign = "left";
+
+  // Заголовок: «4K · Nuga_006» и «Раунд 9 · Mirage»
+  ctx.fillStyle = "rgba(11,13,17,.82)";
+  roundRect(24, 24, 560, 104, 16); ctx.fill();
+  ctx.fillStyle = "#ff5a1f";
+  ctx.font = "800 44px system-ui, sans-serif";
+  ctx.fillText(R.clip.title, 46, 78);
+  ctx.fillStyle = "#c9ccd3";
+  ctx.font = "26px system-ui, sans-serif";
+  ctx.fillText(R.clip.sub, 46, 113);
+
+  // Киллфид справа сверху: последние 5 убийств
+  const kills = r.kills.filter((k) => k.tick <= curTick).slice(-5);
+  ctx.font = "600 24px system-ui, sans-serif";
+  kills.forEach((k, i) => {
+    const text = `${k.attacker}  ›  ${k.victim}${k.headshot ? "  ◎" : ""}`;
+    const w = ctx.measureText(text).width + 32, y = 24 + i * 46;
+    ctx.fillStyle = "rgba(11,13,17,.82)";
+    roundRect(W - 24 - w, y, w, 38, 8); ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.fillText(text, W - 24 - w + 16, y + 27);
+  });
+
+  // Подпись внизу
+  ctx.textAlign = "right";
+  ctx.font = "700 24px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,.75)";
+  ctx.fillText("Nuga CS Demo", W - 28, W - 28);
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, rad) {
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
 }
 
 function jumpTo(h) {
@@ -1423,8 +1548,8 @@ function tick(ts) {
   if (R.lastTs) {
     const dt = (ts - R.lastTs) / 1000;
     const fps = TICKRATE / R.data.replay.step;          // кадров в секунду в реальном времени
-    R.pos += dt * fps * Number($("speed").value);
-    const last = R.data.replay.rounds[R.round].frames.length - 1;
+    R.pos += dt * fps * Number(R.clip?.speed || $("speed").value);
+    const last = R.clip ? R.clip.endPos : R.data.replay.rounds[R.round].frames.length - 1;
     if (R.pos >= last) { R.pos = last; draw(); return stop(); }
   }
   R.lastTs = ts;
