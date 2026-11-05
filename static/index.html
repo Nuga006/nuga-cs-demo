@@ -115,6 +115,18 @@
   .mcard .mvp { margin-top: 8px; font-size: 13px; }
   .mcard .mvp b { color: var(--accent); }
   .chip.btn { cursor: pointer; color: var(--text); font: inherit; }
+  .mcard.win { border-left: 4px solid var(--win); } .mcard.lose { border-left: 4px solid var(--lose); }
+  .mcard .you { color: var(--muted); font-size: 12px; }
+
+  /* Мой ник */
+  .mebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin: -14px 0 24px; }
+  .mebar input { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+                 padding: 5px 10px; font: inherit; width: 170px; }
+  .mebar input:focus { outline: none; border-color: var(--accent); }
+  .mebar b { color: var(--accent); }
+  tr.me td { background: rgba(255, 90, 31, .08); }
+  tr.me td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  .prow.me .pn { color: var(--accent); }
   .chip.btn:hover { border-color: var(--accent); }
 
   /* Разбор игрока */
@@ -209,6 +221,11 @@
 <div class="wrap">
   <h1>Nuga <span>CS</span> Demo</h1>
   <div class="sub">Загрузите демку CS2 с FACEIT — получите статистику, матрицу дуэлей и 2D-реплей.</div>
+  <div class="mebar">
+    <span>Мой ник:</span>
+    <input id="meInput" placeholder="например Nuga_006" autocomplete="off">
+    <span id="meNote"></span>
+  </div>
 
   <h2 style="margin-top:0">Игрок FACEIT</h2>
   <form class="search" id="search">
@@ -309,6 +326,41 @@ function setStatus(text, isError = false) {
   statusEl.className = "status" + (isError ? " err" : "");
 }
 
+// ---------- Мой ник ----------
+// Запоминаем в браузере, кто «я», чтобы показывать счёт с моей стороны и подсвечивать меня
+let ME = "";
+try { ME = localStorage.getItem("nuga.me") || ""; } catch { /* браузер может запрещать хранение — не страшно */ }
+$("meInput").value = ME;
+updateMeNote();
+
+$("meInput").addEventListener("change", () => setMe($("meInput").value));
+
+function setMe(name) {
+  ME = name.trim();
+  try { localStorage.setItem("nuga.me", ME); } catch { /* ничего */ }
+  $("meInput").value = ME;
+  updateMeNote();
+  loadHistory();
+  if (R.data) render(R.data);       // перерисовать открытый матч с подсветкой
+}
+
+function updateMeNote() {
+  $("meNote").innerHTML = ME ? `счёт и подсветка — со стороны <b>${esc(ME)}</b>` : "введите, чтобы видеть счёт со своей стороны";
+}
+
+const isMe = (name) => !!ME && String(name).toLowerCase() === ME.toLowerCase();
+
+// Номер игрока «я» в открытом матче (или -1)
+const myIndex = (data) => (data?.players || []).findIndex((p) => isMe(p.name));
+
+// Название команды: «Моя команда» / «Соперники», если я в этом матче, иначе «Команда 1/2»
+function teamLabel(data, ti) {
+  const teams = [...new Set(data.players.map((p) => p.team))].sort();
+  const mi = myIndex(data);
+  if (mi < 0) return `Команда ${ti + 1}`;
+  return data.players[mi].team === teams[ti] ? "Моя команда" : "Соперники";
+}
+
 // ---------- Сохранённые матчи ----------
 const mapTitle = (m) => (m || "?").replace(/^de_/, "").replace(/^./, (c) => c.toUpperCase());
 
@@ -322,8 +374,16 @@ async function loadHistory() {
     $("history").innerHTML = list.map((m) => {
       const date = new Date(m.created * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
       const names = (m.teams || []).map((t) => t.join(", ")).join(" vs ");
-      return `<button class="mcard" data-id="${esc(m.id)}" title="${esc(names)}">` +
-        `<div class="top"><span class="mp">${esc(mapTitle(m.map))}</span><span class="sc">${m.score[0]} : ${m.score[1]}</span></div>` +
+      // Если я играл в этом матче — счёт с моей стороны и цвет победы/поражения
+      const myTeam = (m.teams || []).findIndex((t) => t.some(isMe));
+      let score = `${m.score[0]} : ${m.score[1]}`, cls = "";
+      if (myTeam >= 0) {
+        const mine = m.score[myTeam], theirs = m.score[1 - myTeam];
+        score = `${mine} : ${theirs}`;
+        cls = mine > theirs ? " win" : mine < theirs ? " lose" : "";
+      }
+      return `<button class="mcard${cls}" data-id="${esc(m.id)}" title="${esc(names)}">` +
+        `<div class="top"><span class="mp">${esc(mapTitle(m.map))}</span><span class="sc">${score}</span></div>` +
         `<div class="sub">${date}${m.highlights ? ` · ${m.highlights} хайлайтов` : ""}</div>` +
         (m.mvp ? `<div class="mvp">MVP: ${esc(m.mvp.name)} <b>${(m.mvp.rating ?? 0).toFixed(2)}</b></div>` : "") +
         `</button>`;
@@ -383,6 +443,7 @@ $("search").addEventListener("submit", async (e) => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Ошибка");
     renderPlayer(data);
+    if (!ME) setMe(data.nickname);      // первый найденный ник запоминаем как «мой»
   } catch (err) {
     $("player").innerHTML = `<div class="status err">${esc(err.message)}</div>`;
   }
@@ -486,7 +547,7 @@ async function upload(file) {
 function render(data) {
   const teams = [...new Set(data.players.map((p) => p.team))].sort();
   const byTeam = (t) => data.players.filter((p) => p.team === t).sort((a, b) => b.kills - a.kills);
-  const teamName = (i) => `Команда ${i + 1}`;
+  const teamName = (i) => teamLabel(data, i);
 
   $("meta").innerHTML =
     `<div class="chip">Карта: <b>${esc(data.map)}</b></div>` +
@@ -506,7 +567,7 @@ function render(data) {
       const kdClass = p.kd >= 1 ? "good" : "bad";
       const rClass = p.rating >= 1.1 ? "good" : p.rating < 0.9 ? "bad" : "";
       const fkClass = p.fk > p.fd ? "good" : p.fk < p.fd ? "bad" : "";
-      html += `<tr><td><button class="plink" data-i="${data.players.indexOf(p)}">${esc(p.name)}</button></td>` +
+      html += `<tr${isMe(p.name) ? ' class="me"' : ""}><td><button class="plink" data-i="${data.players.indexOf(p)}">${esc(p.name)}</button></td>` +
               `<td>${p.kills}</td><td>${p.deaths}</td><td>${p.assists}</td>` +
               `<td class="${kdClass}">${p.kd.toFixed(2)}</td><td>${p.adr}</td><td>${p.hs}%</td>` +
               `<td>${p.kast ?? "-"}%</td><td class="${fkClass}">${p.fk ?? 0}–${p.fd ?? 0}</td>` +
@@ -521,7 +582,7 @@ function render(data) {
     const count = (a, v) => (data.duels[a.steamid] || {})[v.steamid] || 0;
     let d = "<tr><th></th>" + cols.map((c) => `<th>${esc(c.name)}</th>`).join("") + "</tr>";
     for (const r of rows) {
-      d += `<tr><td>${esc(r.name)}</td>`;
+      d += `<tr${isMe(r.name) ? ' class="me"' : ""}><td>${esc(r.name)}</td>`;
       for (const c of cols) {
         const won = count(r, c), lost = count(c, r);
         const color = won > lost ? "rgba(47,179,107,.25)" : won < lost ? "rgba(224,71,76,.25)" : "transparent";
@@ -664,10 +725,10 @@ function renderScore(i) {
   R.roundWinners.forEach((w) => { if (w >= 0) total[w]++; });
   const cls = (a, b) => (a > b ? "num lead" : "num");
   $("score").innerHTML =
-    `<span>Команда 1</span>` +
+    `<span>${esc(teamLabel(R.data, 0))}</span>` +
     `<span class="${cls(won[0], won[1])}">${won[0]}</span><span class="sep">:</span>` +
     `<span class="${cls(won[1], won[0])}">${won[1]}</span>` +
-    `<span>Команда 2</span>` +
+    `<span>${esc(teamLabel(R.data, 1))}</span>` +
     `<span class="small">после ${i + 1}-го раунда · итог ${total[0]}:${total[1]}</span>`;
 }
 
@@ -726,7 +787,11 @@ function draw() {
       ctx.arc(x, y, 11, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = "#0b0d11"; ctx.stroke();
-      ctx.fillStyle = "#fff";
+      if (isMe(pl.name)) {
+        ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2);
+        ctx.lineWidth = 3; ctx.strokeStyle = "#ff5a1f"; ctx.stroke();
+      }
+      ctx.fillStyle = isMe(pl.name) ? "#ff8a5c" : "#fff";
       ctx.font = "bold 20px system-ui, sans-serif";
       ctx.fillText(pl.name, x, y - 18);
 
@@ -768,8 +833,8 @@ const heat = $("heat"), hctx = heat.getContext("2d");
 function setupPlayer(data) {
   $("pSel").innerHTML = `<option value="-1">Все игроки</option>` +
     data.players.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
-  H.player = -1;
-  $("pSel").value = "-1";
+  H.player = myIndex(data);           // если я в матче — сразу показываем мой разбор
+  $("pSel").value = String(H.player);
   drawHeat();
   renderPlayerInfo();
 }
@@ -949,7 +1014,7 @@ function renderEconomy(data) {
   const cols = rounds.length + 1;
   let html = `<div class="eco-grid" style="grid-template-columns: auto repeat(${rounds.length}, 52px)">`;
   teams.forEach((t, ti) => {
-    html += `<div class="eco-name">Команда ${ti + 1}</div>`;
+    html += `<div class="eco-name">${esc(teamLabel(data, ti))}</div>`;
     rounds.forEach((r, ri) => {
       const e = eco[ti][ri];
       const won = R.roundWinners[ri] === ti;
@@ -1074,7 +1139,7 @@ function renderTeams(r, frame, curTick) {
         const hpColor = hp > 60 ? "#2fb36b" : hp > 25 ? "#e8b14a" : "#e0474c";
         const nades = alive ? [...(p[8] || "")].map((c) => `<b>${c}</b>`).join("") : "";
         const bomb = alive && p[9] ? `<b class="c4">C4</b>` : "";
-        return `<div class="prow${alive ? "" : " dead"}">` +
+        return `<div class="prow${alive ? "" : " dead"}${isMe(pl.name) ? " me" : ""}">` +
           `<span class="pn">${esc(pl.name)}</span>` +
           `<span class="hpb"><i style="width:${hp}%;background:${hpColor}"></i></span>` +
           `<span class="nd">${bomb}${nades}</span>` +
@@ -1083,7 +1148,7 @@ function renderTeams(r, frame, curTick) {
       }).join("");
 
     const tag = side === 2 ? `<span class="tag t">T</span>` : side === 3 ? `<span class="tag ct">CT</span>` : "";
-    return { side, html: `<div class="tpanel"><div class="thead">${tag}<span>Команда ${ti + 1}</span>` +
+    return { side, html: `<div class="tpanel"><div class="thead">${tag}<span>${esc(teamLabel(R.data, ti))}</span>` +
       `<span class="sc">${score}</span></div>${rows}</div>` };
   });
 
