@@ -468,6 +468,26 @@
   .vsp .lead { margin-top: 10px; font-weight: 800; color: var(--c); }
   .vsp .chg { margin-top: 10px; }
   .vsmid { color: var(--muted); font-weight: 900; font-size: 28px; }
+  .vs.n1, .vs.n2 { grid-template-columns: repeat(2, 1fr); }
+  .vs.n3 { grid-template-columns: 1fr auto 1fr 1fr; }
+  .vs.n4 { grid-template-columns: repeat(4, 1fr); } .vs.n5 { grid-template-columns: repeat(5, 1fr); }
+  .vs.n6 { grid-template-columns: repeat(6, 1fr); }
+  .vs.n4 .vsmid, .vs.n5 .vsmid, .vs.n6 .vsmid { display: none; }
+  .vs.n4 .vsp .av, .vs.n5 .vsp .av, .vs.n6 .vsp .av, .vs.n4 .pickbtn, .vs.n5 .pickbtn, .vs.n6 .pickbtn { width: 96px; height: 96px; }
+  .vs.n5 .vsp .nm, .vs.n6 .vsp .nm { font-size: 17px; }
+  .vsp { position: relative; }
+  .vsp .rm { position: absolute; top: -6px; right: calc(50% - 76px); width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line);
+             background: #1b1e26; color: var(--muted); font-size: 16px; cursor: pointer; z-index: 2; }
+  .vsp .rm:hover { color: var(--lose); border-color: var(--lose); }
+  .vs.n4 .vsp .rm, .vs.n5 .vsp .rm, .vs.n6 .vsp .rm { right: calc(50% - 58px); }
+  .mcmp { background: #15171d; border: 1px solid var(--line); border-radius: 20px; overflow-x: auto; }
+  .mrowc { display: grid; gap: 10px; align-items: center; padding: 10px 18px; border-top: 1px solid var(--line); min-width: max-content; }
+  .mrowc.mhd { border-top: 0; background: #1b1e26; font-weight: 800; text-align: center; }
+  .mgt { padding: 14px 18px 6px; font-weight: 800; border-top: 1px solid var(--line); }
+  .ml { color: #c9ccd3; font-size: 14px; }
+  .mc { text-align: center; font-variant-numeric: tabular-nums; }
+  .mc b { display: block; font-size: 18px; } .mc.top b { color: var(--text); } .mc:not(.top) b { color: #9aa0ab; font-weight: 700; }
+  .mc i { display: block; height: 4px; border-radius: 2px; margin: 5px auto 0; max-width: 90px; opacity: .85; }
   .pickbtn { width: 132px; height: 132px; border-radius: 50%; border: 2px dashed #3a3f4b; background: #15171d; color: var(--accent);
              font-size: 54px; cursor: pointer; display: grid; place-items: center; margin: 0 auto 12px; }
   .pickbtn:hover { border-color: var(--accent); }
@@ -475,16 +495,18 @@
   .crow { display: grid; grid-template-columns: 26px 70px 1fr 70px 26px; gap: 12px; align-items: center; padding: 12px 0 4px; }
   .crow .lbl { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 14px; margin-bottom: -4px; }
   .crow .v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .crow .v.l { text-align: right; color: #5bb8ff; } .crow .v.r { color: #ff5d73; }
+  .crow .v.l { text-align: right; color: var(--ca, #5bb8ff); } .crow .v.r { color: var(--cb, #ff5d73); }
   .crow .v.dim { opacity: .5; }
-  .crow .line { position: relative; height: 3px; border-radius: 2px; background: linear-gradient(90deg, #5bb8ff var(--p), #ff5d73 var(--p)); }
+  .crow .line { position: relative; height: 3px; border-radius: 2px;
+                background: linear-gradient(90deg, var(--ca, #5bb8ff) var(--p), var(--cb, #ff5d73) var(--p)); }
   .crow .line::after { content: ""; position: absolute; left: var(--p); top: -5px; width: 2px; height: 13px; background: #fff; opacity: .7; }
   .crow .cr { text-align: center; font-size: 18px; }
   .pickrow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
   .pickrow span { flex: 1; font-weight: 600; }
   .pickrow button { background: none; border: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
   @media (max-width: 760px) {
-    .vs { grid-template-columns: 1fr 1fr; } .vsmid { display: none; }
+    .vs, .vs.n4, .vs.n5, .vs.n6 { grid-template-columns: 1fr 1fr; } .vsmid { display: none; }
+    .vsp .rm { right: calc(50% - 58px); }
     .vsp .av, .pickbtn { width: 96px; height: 96px; } .vsp .nm { font-size: 17px; }
     .crow { grid-template-columns: 18px 56px 1fr 56px 18px; gap: 8px; } .crow .v { font-size: 18px; }
   }
@@ -679,7 +701,7 @@
 
     <!-- Сравнение -->
     <section class="view" data-view="compare">
-      <div class="phead"><div><h1>Сравнение</h1><div class="psub">Вы против другого игрока — по последним 20 матчам FACEIT</div></div>
+      <div class="phead"><div><h1>Сравнение</h1><div class="psub">До 5 игроков FACEIT — по последним 20 матчам каждого</div></div>
         <div class="pact"><button class="pbtn" id="cmpRefresh">⟳ Обновить</button></div></div>
       <div class="vs" id="vs"></div>
       <div id="cmpBars"></div>
@@ -820,10 +842,10 @@
 
 <div class="modal" id="pickModal">
   <div class="mbox">
-    <h3><span>Выберите соперника</span><button id="pickClose" title="Закрыть">×</button></h3>
+    <h3><span>Добавить игрока</span><button id="pickClose" title="Закрыть">×</button></h3>
     <form id="pickForm" class="search" style="margin:12px 0">
       <input id="pickInput" placeholder="Ник на FACEIT" autocomplete="off">
-      <button type="submit">Сравнить</button>
+      <button type="submit">Добавить</button>
     </form>
     <div class="note" style="margin:0 0 6px">Игроки из ваших матчей</div>
     <div id="pickList"></div>
@@ -1274,14 +1296,48 @@ function renderRecords() {
   box.querySelectorAll(".rec[data-id]").forEach((c) => c.addEventListener("click", () => openMatch(c.dataset.id, true)));
 }
 
-// ---------- Сравнение ----------
-const CMP = { me: null, rival: null, rivalNick: null };
+// ---------- Сравнение (до 5 игроков) ----------
+const CMP = { nicks: [], data: {}, errors: {} };
+const CMP_MAX = 5;
+const CMP_COLORS = ["#5bb8ff", "#ff5d73", "#e8b14a", "#a78bfa", "#4ade80"];
 const CMP_GROUPS = [
   ["Основные показатели", [["winrate", "Победы, %"], ["kd", "K / D"], ["kills", "Убийств за матч"], ["adr", "ADR"]]],
   ["Стрельба", [["hs", "Хедшоты, %"], ["kr", "Убийств за раунд"]]],
   ["Командная игра", [["assists", "Ассистов за матч"], ["mvps", "MVP за матч"]]],
   ["Мульти-киллы", [["triple", "3K"], ["quadro", "4K"], ["penta", "Эйсы"]]],
+  ["Из разобранных демок", [["d_rating", "Rating 1.0"], ["d_kast", "KAST, %"], ["d_adr", "ADR (демки)"],
+    ["d_open", "Открывающие дуэли, %"], ["d_trade", "Размены, %"], ["d_clutch", "Клатчи, %"],
+    ["d_acc", "Точность, %"], ["d_ud", "Урон гранатами за матч"]]],
 ];
+
+// Показатели игрока по нашим разобранным матчам (в каждом матче сохранена статистика всех 10 игроков)
+function demoStats(nick) {
+  const n = String(nick).toLowerCase();
+  const rows = [];
+  for (const m of MATCH_LIST) {
+    const st = (m.stats || []).find((q) => String(q.name).toLowerCase() === n);
+    if (st) rows.push(st);
+  }
+  const has = (f) => rows.filter((r) => r[f] != null);
+  const sum = (f, rs = has(f)) => rs.reduce((a, r) => a + (Number(r[f]) || 0), 0);
+  const avg = (f) => { const rs = has(f); return rs.length ? sum(f, rs) / rs.length : null; };
+  const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);
+  let cw = 0, ca = 0;
+  for (const r of rows) for (const [w, a] of Object.values(r.clutch || {})) { cw += w; ca += a; }
+  const r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
+  return {
+    demos: rows.length,
+    d_rating: r2(avg("rating")),
+    d_kast: avg("kast") == null ? null : Math.round(avg("kast") * 10) / 10,
+    d_adr: avg("adr") == null ? null : Math.round(avg("adr") * 10) / 10,
+    d_open: pct(sum("fk"), sum("fk") + sum("fd")),
+    d_trade: pct(sum("trades"), sum("kills", has("trades"))),
+    d_clutch: pct(cw, ca),
+    d_acc: pct(sum("hits"), sum("shots")),
+    d_ud: avg("ud") == null ? null : Math.round(avg("ud")),
+  };
+}
+const cmpFmt = (key, v) => (v == null ? "—" : Number.isInteger(v) ? v : Number(v).toFixed(key === "kd" || key === "kr" || key === "d_rating" ? 2 : 1));
 
 async function fetchSummary(nick) {
   const res = await fetch(`/api/faceit/summary?nickname=${encodeURIComponent(nick)}`);
@@ -1290,92 +1346,158 @@ async function fetchSummary(nick) {
   return data;
 }
 
+function cmpUrl() {
+  history.replaceState({}, "", CMP.nicks.length ? `/app/compare/${CMP.nicks.map(encodeURIComponent).join(",")}` : "/app/compare");
+}
+
 async function initCompare(force = false) {
-  if (!USER) { $("vs").innerHTML = `<div class="note">Войдите через Steam, чтобы сравнивать себя с другими игроками.</div>`; $("cmpBars").innerHTML = ""; return; }
-  const myNick = USER.faceit?.nickname;
-  if (!myNick) { $("vs").innerHTML = `<div class="note">Для сравнения нужен аккаунт FACEIT, привязанный к вашему Steam.</div>`; return; }
+  if (!USER) { $("vs").innerHTML = `<div class="note">Войдите через Steam, чтобы сравнивать игроков.</div>`; $("cmpBars").innerHTML = ""; return; }
   const fromUrl = decodeURIComponent((location.pathname.match(/^\/app\/compare\/([^/]+)/) || [])[1] || "");
-  if (fromUrl) CMP.rivalNick = fromUrl;
+  if (fromUrl) CMP.nicks = fromUrl.split(",").map((x) => x.trim()).filter(Boolean).slice(0, CMP_MAX);
+  else if (!CMP.nicks.length && USER.faceit?.nickname) CMP.nicks = [USER.faceit.nickname];
+  if (force) { CMP.data = {}; CMP.errors = {}; }
   renderCompare();
-  try {
-    if (!CMP.me || force) CMP.me = await fetchSummary(myNick);
-    if (CMP.rivalNick && (force || CMP.rival?.nickname?.toLowerCase() !== CMP.rivalNick.toLowerCase())) {
-      CMP.rival = await fetchSummary(CMP.rivalNick);
-    }
-  } catch (err) {
-    CMP.rival = null;
-    $("cmpBars").innerHTML = `<div class="status err">${esc(err.message)}</div>`;
-  }
+  await Promise.all(CMP.nicks.map(async (nick) => {
+    const key = nick.toLowerCase();
+    if (CMP.data[key]) return;
+    try { CMP.data[key] = await fetchSummary(nick); delete CMP.errors[key]; }
+    catch (err) { CMP.errors[key] = err.message; }
+  }));
   renderCompare();
 }
 
+function cmpPlayers() {
+  return CMP.nicks.map((n, i) => ({ nick: n, p: CMP.data[n.toLowerCase()], err: CMP.errors[n.toLowerCase()], color: CMP_COLORS[i % CMP_COLORS.length] }));
+}
+
 function renderCompare() {
-  const { me, rival } = CMP;
-  let leadMe = 0, leadRival = 0, bars = "";
-  if (me && rival) {
+  const list = cmpPlayers();
+  const ready = list.filter((x) => x.p);
+  for (const x of ready) { x.d = demoStats(x.nick); x.s = { ...x.p.stats, ...x.d }; }
+  const myNick = (USER?.faceit?.nickname || "").toLowerCase();
+
+  // Сколько показателей у каждого лучший
+  const leads = {};
+  if (ready.length >= 2) for (const [, rows] of CMP_GROUPS) for (const [key] of rows) {
+    const vals = ready.map((x) => x.s[key]).filter((v) => v != null);
+    if (vals.length < 2) continue;
+    const best = Math.max(...vals);
+    if (vals.filter((v) => v === best).length > 1) continue;      // ничья — короны нет
+    const w = ready.find((x) => x.s[key] === best);
+    leads[w.nick] = (leads[w.nick] || 0) + 1;
+  }
+
+  // ---------- Карточки игроков ----------
+  const card = (x) => {
+    const me = x.nick.toLowerCase() === myNick;
+    const head = x.p
+      ? (x.p.avatar ? `<img class="av" src="${esc(x.p.avatar)}" alt="">` : `<span class="av"></span>`) +
+        `<div class="nm">${esc(x.p.nickname)}</div><div class="mt">${me ? "Вы · " : ""}${x.p.matches} матчей FACEIT · ${x.d.demos} демок</div>` +
+        `<div class="tags"><span>${x.p.elo ?? "—"} ELO</span><span>${x.p.level ?? "—"} ур.</span></div>` +
+        (ready.length >= 2 ? `<div class="lead">лучший по ${leads[x.nick] || 0}</div>` : "")
+      : `<span class="av"></span><div class="nm">${esc(x.nick)}</div>` +
+        `<div class="mt">${x.err ? `<span class="bad">${esc(x.err)}</span>` : "Загружаем..."}</div>`;
+    return `<div class="vsp" style="--c:${x.color}"><button class="rm" data-n="${esc(x.nick)}" title="Убрать из сравнения">×</button>${head}</div>`;
+  };
+  const addSlot = list.length < CMP_MAX
+    ? `<div class="vsp"><button class="pickbtn" id="pickOpen">+</button><div class="nm" style="color:var(--accent)">Добавить игрока</div>` +
+      `<div class="mt">ещё ${CMP_MAX - list.length} из ${CMP_MAX}</div></div>`
+    : "";
+  $("vs").className = `vs n${Math.min(list.length + (addSlot ? 1 : 0), 6)}`;
+  $("vs").innerHTML = list.length === 2 && !addSlot
+    ? card(list[0]) + `<div class="vsmid">VS</div>` + card(list[1])
+    : list.map(card).join("") + addSlot;
+  if (list.length === 2 && addSlot) {
+    // Двое + слот: «VS» между ними
+    $("vs").innerHTML = card(list[0]) + `<div class="vsmid">VS</div>` + card(list[1]) + addSlot;
+  }
+
+  // ---------- Показатели ----------
+  let html = "";
+  if (ready.length < 2) {
+    html = `<div class="note" style="text-align:center">${list.length < 2 ? "Добавьте ещё хотя бы одного игрока, чтобы сравнить статистику." : "Загружаем статистику..."}</div>`;
+  } else if (ready.length === 2) {
+    // Двое — шкала «друг против друга»
+    const [a, b] = ready;
     for (const [title, rows] of CMP_GROUPS) {
-      bars += `<div class="cgroup">${title}</div>`;
+      html += `<div class="cgroup">${title}</div>`;
       for (const [key, label] of rows) {
-        const a = me.stats[key], b = rival.stats[key];
-        const fmt = (v) => (v == null ? "—" : Number.isInteger(v) ? v : Number(v).toFixed(key === "kd" || key === "kr" ? 2 : 1));
-        const sum = (a || 0) + (b || 0);
-        const p = sum ? ((a || 0) / sum) * 100 : 50;
-        const win = a == null || b == null || a === b ? 0 : a > b ? 1 : -1;
-        if (win > 0) leadMe++; else if (win < 0) leadRival++;
-        bars += `<div class="crow"><div class="lbl">${label}</div>` +
-          `<span class="cr">${win > 0 ? "👑" : ""}</span>` +
-          `<span class="v l ${win < 0 ? "dim" : ""}">${fmt(a)}</span>` +
-          `<span class="line" style="--p:${p.toFixed(1)}%"></span>` +
-          `<span class="v r ${win > 0 ? "dim" : ""}">${fmt(b)}</span>` +
-          `<span class="cr">${win < 0 ? "👑" : ""}</span></div>`;
+        const va = a.s[key], vb = b.s[key];
+        const sum = (va || 0) + (vb || 0), pct = sum ? ((va || 0) / sum) * 100 : 50;
+        const win = va == null || vb == null || va === vb ? 0 : va > vb ? 1 : -1;
+        html += `<div class="crow" style="--ca:${a.color};--cb:${b.color}"><div class="lbl">${label}</div>` +
+          `<span class="cr">${win > 0 ? "👑" : ""}</span><span class="v l ${win < 0 ? "dim" : ""}">${cmpFmt(key, va)}</span>` +
+          `<span class="line" style="--p:${pct.toFixed(1)}%"></span>` +
+          `<span class="v r ${win > 0 ? "dim" : ""}">${cmpFmt(key, vb)}</span><span class="cr">${win < 0 ? "👑" : ""}</span></div>`;
       }
     }
+  } else {
+    // Трое и больше — таблица
+    const cols = `grid-template-columns: minmax(130px, 1.3fr) repeat(${ready.length}, minmax(86px, 1fr))`;
+    html = `<div class="mcmp"><div class="mrowc mhd" style="${cols}"><span></span>` +
+      ready.map((x) => `<span style="color:${x.color}">${esc(x.p.nickname)}</span>`).join("") + `</div>`;
+    for (const [title, rows] of CMP_GROUPS) {
+      html += `<div class="mgt">${title}</div>`;
+      for (const [key, label] of rows) {
+        const vals = ready.map((x) => x.s[key]);
+        const nums = vals.filter((v) => v != null);
+        const best = nums.length ? Math.max(...nums) : null;
+        const unique = nums.filter((v) => v === best).length === 1;
+        html += `<div class="mrowc" style="${cols}"><span class="ml">${label}</span>` + ready.map((x, i) => {
+          const v = vals[i], top = v != null && v === best && unique;
+          const w = best ? Math.max(4, ((v || 0) / best) * 100) : 0;
+          return `<span class="mc ${top ? "top" : ""}"><b>${top ? "👑 " : ""}${cmpFmt(key, v)}</b>` +
+            `<i style="width:${w}%;background:${x.color}"></i></span>`;
+        }).join("") + `</div>`;
+      }
+    }
+    html += `</div>`;
   }
-  const card = (p, color, label, lead) => `<div class="vsp" style="--c:${color}">` +
-    (p.avatar ? `<img class="av" src="${esc(p.avatar)}" alt="">` : `<span class="av"></span>`) +
-    `<div class="nm">${esc(p.nickname)}</div><div class="mt">${label} · ${p.matches} матчей</div>` +
-    `<div class="tags"><span>${p.elo ?? "—"} ELO</span><span>${p.level ?? "—"} ур.</span></div>` +
-    (lead != null ? `<div class="lead">впереди по ${lead}</div>` : "") + `</div>`;
-  const left = me ? card(me, "#5bb8ff", "Вы", rival ? leadMe : null) : `<div class="vsp"><div class="note">Загружаем ваш профиль...</div></div>`;
-  const right = rival
-    ? card(rival, "#ff5d73", "Соперник", leadRival).replace(/<\/div>$/, `<button class="pbtn chg" id="pickOpen2">⇄ Сменить соперника</button></div>`)
-    : `<div class="vsp"><button class="pickbtn" id="pickOpen">+</button><div class="nm" style="color:var(--accent)">Выберите соперника</div>` +
-      `<div class="mt">${CMP.rivalNick ? "Загружаем..." : "Любой игрок FACEIT"}</div></div>`;
-  $("vs").innerHTML = left + `<div class="vsmid">VS</div>` + right;
-  $("cmpBars").innerHTML = bars || (me && !CMP.rivalNick ? `<div class="note" style="text-align:center">Выберите соперника, чтобы сравнить статистику.</div>` : $("cmpBars").innerHTML);
-  ["pickOpen", "pickOpen2"].forEach((id) => $(id)?.addEventListener("click", openPicker));
+  if (ready.length >= 2) html += `<div class="note" style="margin-top:12px">«Из разобранных демок» считается по вашим разобранным матчам, ` +
+    `где был этот игрок (число демок — под ником). Если демок нет, там прочерк.</div>`;
+  $("cmpBars").innerHTML = html;
+
+  $("pickOpen")?.addEventListener("click", openPicker);
+  $("vs").querySelectorAll(".rm").forEach((b) => b.addEventListener("click", () => {
+    CMP.nicks = CMP.nicks.filter((n) => n !== b.dataset.n);
+    cmpUrl();
+    renderCompare();
+  }));
 }
 
 function openPicker() {
   $("pickModal").classList.add("on");
   $("pickInput").value = "";
   $("pickInput").focus();
-  // Игроки из моих разобранных матчей: сначала те, с кем играл чаще
-  const nick = (USER?.faceit?.nickname || ME || "").toLowerCase();
+  // Игроки из моих разобранных матчей: сначала те, с кем играл чаще; уже добавленных не показываем
+  const taken = new Set(CMP.nicks.map((n) => n.toLowerCase()));
   const count = {};
   for (const m of MATCH_LIST) for (const p of m.stats || []) {
     const n = String(p.name);
-    if (n.toLowerCase() !== nick) count[n] = (count[n] || 0) + 1;
+    if (!taken.has(n.toLowerCase())) count[n] = (count[n] || 0) + 1;
   }
+  const me = USER?.faceit?.nickname;
   const names = Object.entries(count).sort((x, y) => y[1] - x[1]).slice(0, 30);
+  if (me && !taken.has(me.toLowerCase())) names.unshift([me, 0]);
   $("pickList").innerHTML = names.length
-    ? names.map(([n, c]) => `<div class="pickrow"><span>${esc(n)}</span><small class="note" style="margin:0">${c} ${c === 1 ? "матч" : "матча"}</small>` +
-        `<button data-n="${esc(n)}">Сравнить</button></div>`).join("")
+    ? names.map(([n, c]) => `<div class="pickrow"><span>${esc(n)}</span>` +
+        `<small class="note" style="margin:0">${n === me ? "это вы" : `${c} ${c === 1 ? "матч" : "матча"}`}</small>` +
+        `<button data-n="${esc(n)}">Добавить</button></div>`).join("")
     : `<div class="note">Разберите пару матчей — здесь появятся ваши тиммейты и соперники.</div>`;
-  $("pickList").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => pickRival(b.dataset.n)));
+  $("pickList").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => addCompare(b.dataset.n)));
 }
 
-function pickRival(nick) {
+function addCompare(nick) {
   nick = nick.trim();
   if (!nick) return;
   $("pickModal").classList.remove("on");
-  CMP.rivalNick = nick;
-  CMP.rival = null;
-  history.pushState({}, "", `/app/compare/${encodeURIComponent(nick)}`);
+  if (CMP.nicks.some((n) => n.toLowerCase() === nick.toLowerCase()) || CMP.nicks.length >= CMP_MAX) return;
+  CMP.nicks.push(nick);
+  cmpUrl();
   initCompare();
 }
 
-$("pickForm").addEventListener("submit", (e) => { e.preventDefault(); pickRival($("pickInput").value); });
+$("pickForm").addEventListener("submit", (e) => { e.preventDefault(); addCompare($("pickInput").value); });
 $("pickClose").addEventListener("click", () => $("pickModal").classList.remove("on"));
 $("pickModal").addEventListener("click", (e) => { if (e.target === $("pickModal")) $("pickModal").classList.remove("on"); });
 $("cmpRefresh").addEventListener("click", () => initCompare(true));
