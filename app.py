@@ -199,16 +199,23 @@ def match_summary(mid: str, data: dict) -> dict:
         "highlights": len(data.get("replay", {}).get("highlights", [])),
         # Статистика каждого игрока — для раздела «Моя статистика» по всем матчам
         "stats": [
-            {k: p.get(k) for k in ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "rating", "fk", "fd", "ud")}
+            {k: p.get(k) for k in STAT_FIELDS}
             | {"team": teams.index(p["team"]) if p["team"] in teams else -1}
             | highlight_counts(data, i)
             for i, p in enumerate(players)
         ],
         "v": META_VERSION,
+        "av": data.get("analyzer_version", 1),
     }
 
 
-META_VERSION = 2     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
+# Какие показатели игрока сохраняем в карточке матча (для «Статистики», «Рекордов» и «Сравнения»)
+STAT_FIELDS = ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "rating", "fk", "fd", "ud",
+               "rounds", "k2", "k3", "k4", "k5", "trades", "traded", "shots", "hits",
+               "noscope", "smoke", "wall", "blind", "plants", "defuses", "mvps", "clutch")
+
+ANALYZER_VERSION = 2   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
+META_VERSION = 3     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
 
 
 def highlight_counts(data: dict, i: int) -> dict:
@@ -270,17 +277,27 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
     dem = None
     try:
         mid = file_id(raw)
-        if (MATCHES / f"{mid}.json.gz").exists():
+        meta_path = MATCHES / f"{mid}.meta.json"
+        old = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else None
+        if (MATCHES / f"{mid}.json.gz").exists() and old and old.get("av", 1) >= ANALYZER_VERSION:
             link_faceit(mid, faceit_id)
             add_user_match(steam_id, mid)
             return saved_match_response(mid)
-        if get_user(steam_id)["coins"] < ANALYSIS_PRICE:
+        upgrade = (MATCHES / f"{mid}.json.gz").exists()     # разбор есть, но старой версии — переразберём бесплатно
+        faceit_id = faceit_id or (old or {}).get("faceit_id")
+        if not upgrade and get_user(steam_id)["coins"] < ANALYSIS_PRICE:
             raise HTTPException(402, f"Не хватает монет: разбор стоит {ANALYSIS_PRICE}. Заберите ежедневный бонус!")
         dem = prepare_demo(raw)
         data = analyze_demo(dem)
         data["id"] = mid
+        data["analyzer_version"] = ANALYZER_VERSION
         save_match(mid, data, faceit_id)
-        change_coins(steam_id, -ANALYSIS_PRICE, f"Разбор матча {data.get('map', '')}")
+        if old:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta["created"] = old.get("created", meta["created"])    # дата разбора остаётся прежней
+            write_meta(mid, meta)
+        if not upgrade:
+            change_coins(steam_id, -ANALYSIS_PRICE, f"Разбор матча {data.get('map', '')}")
         add_user_match(steam_id, mid)
         return saved_match_response(mid)
     except HTTPException:

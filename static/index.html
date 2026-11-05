@@ -387,6 +387,53 @@
   .chev { color: var(--muted); font-size: 22px; line-height: 1; }
   .mempty { padding: 44px 20px; text-align: center; color: var(--muted); }
 
+  /* Статистика */
+  .shead { display: grid; grid-template-columns: 1fr auto; gap: 14px; margin-bottom: 16px; }
+  .sprof, .selo { background: #15171d; border: 1px solid var(--line); border-radius: 20px; padding: 18px 22px; }
+  .sprof { display: flex; align-items: center; gap: 16px; }
+  .sprof img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: #2a2f3a; }
+  .sprof .nm { font-size: 24px; font-weight: 800; }
+  .shead .mt { color: var(--muted); font-size: 14px; } .shead .mt b { color: var(--text); }
+  .selo { min-width: 240px; }
+  .selo .ev { margin: 4px 0 6px; } .selo .ev b { font-size: 24px; font-weight: 900; }
+  .selo .lb { height: 6px; background: #2a2d36; border-radius: 3px; overflow: hidden; }
+  .selo .lb i { display: block; height: 100%; background: var(--accent); }
+  .selo .sm { display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px; }
+  .acc { color: var(--accent); }
+  .sbar { position: sticky; top: 60px; z-index: 12; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+          background: rgba(11,12,16,.92); backdrop-filter: blur(8px); padding: 10px 0; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .schips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .schips::-webkit-scrollbar { display: none; }
+  .schips button { background: #1b1e26; border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 7px 14px;
+                   font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .schips button:hover { border-color: var(--accent); }
+  .sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .scard { position: relative; background: #15171d; border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; overflow: hidden; }
+  .scard::before { content: ""; position: absolute; left: 18px; top: 0; width: 44px; height: 3px; border-radius: 0 0 3px 3px; background: #3a3f4b; }
+  .scard .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .scard .lb { color: #c9ccd3; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .q { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: #2a2d36; color: var(--muted);
+       font-size: 11px; font-weight: 800; cursor: help; }
+  .scard .gr { font-size: 12px; font-weight: 800; border-radius: 6px; padding: 2px 8px; background: #2a2d36; color: #c9ccd3; }
+  .scard .vl { font-size: 34px; font-weight: 900; letter-spacing: -.02em; margin: 10px 0 2px; font-variant-numeric: tabular-nums; }
+  .scard .sb { color: var(--muted); font-size: 13px; }
+  .scard.ex::before, .scard.gd::before { background: var(--win); } .scard.bd::before { background: var(--lose); }
+  .scard.ex .vl, .scard.gd .vl { color: var(--win); } .scard.bd .vl { color: var(--lose); }
+  .scard.ex .gr, .scard.gd .gr { background: rgba(47,179,107,.15); color: var(--win); }
+  .scard.bd .gr { background: rgba(224,71,76,.15); color: var(--lose); }
+  .cgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; background: #15171d; border: 1px solid var(--line);
+           border-radius: 20px; padding: 16px; margin-bottom: 8px; }
+  .ccell { background: #1b1e26; border-radius: 14px; padding: 14px; text-align: center; }
+  .ccell .lb { color: var(--muted); font-size: 14px; } .ccell .vl { font-size: 28px; font-weight: 900; }
+  .ccell .vl small { font-size: 16px; color: var(--muted); font-weight: 600; } .ccell .sb { color: var(--muted); font-size: 13px; }
+  .ccell .cb { height: 4px; background: #2a2d36; border-radius: 2px; overflow: hidden; margin-top: 8px; } .ccell .cb i { display: block; height: 100%; }
+  .tseg { margin-bottom: 10px; }
+  @media (max-width: 760px) {
+    .shead { grid-template-columns: 1fr; } .sbar { top: 108px; }
+    .cgrid { grid-template-columns: repeat(3, 1fr); }
+    .scard .vl { font-size: 28px; }
+  }
+
   /* Рекорды */
   .recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
   .rec { position: relative; overflow: hidden; min-height: 168px; background: #15171d; border: 1px solid var(--line); border-radius: 20px;
@@ -1002,7 +1049,7 @@ async function loadHistory() {
   try {
     const list = await (await fetch("/api/matches")).json();
     MATCH_LIST = list;
-    renderMyStats(list);
+    renderMyStats();
     if (LAST_PLAYER) renderPlayer(LAST_PLAYER);   // обновить пометки «Разобран» в списке FACEIT
     renderMatchesPage();
     renderRecords();
@@ -1320,94 +1367,202 @@ $("pickClose").addEventListener("click", () => $("pickModal").classList.remove("
 $("pickModal").addEventListener("click", (e) => { if (e.target === $("pickModal")) $("pickModal").classList.remove("on"); });
 $("cmpRefresh").addEventListener("click", () => initCompare(true));
 
-// ---------- Моя статистика по всем матчам ----------
+// ---------- Статистика по всем матчам ----------
+let STATS_PERIOD = 20;          // 10 / 20 / 0 (все)
+let TREND_METRIC = "rating";
+
+// Пороги оценок: [средне от, хорошо от, отлично от]; ниже первого — «Плохо»
+const GRADES = {
+  rating: [0.9, 1.05, 1.2], kd: [0.9, 1.05, 1.25], kr: [0.6, 0.72, 0.85], adr: [65, 78, 90], hs: [35, 45, 55], kast: [65, 70, 76],
+  opening: [40, 50, 58], tradek: [10, 16, 22], clutch: [15, 25, 35], acc: [15, 20, 25],
+};
+function grade(key, v) {
+  const g = GRADES[key];
+  if (!g || v == null || isNaN(v)) return null;
+  if (v >= g[2]) return ["Отлично", "ex"];
+  if (v >= g[1]) return ["Хорошо", "gd"];
+  if (v >= g[0]) return ["Средне", "av"];
+  return ["Плохо", "bd"];
+}
+
+// Уровни FACEIT по ELO (CS2)
+const FACEIT_LEVELS = [[1, 100], [2, 501], [3, 751], [4, 901], [5, 1051], [6, 1201], [7, 1351], [8, 1531], [9, 1751], [10, 2001]];
+function levelProgress(elo) {
+  if (elo == null) return null;
+  let cur = FACEIT_LEVELS[0];
+  for (const l of FACEIT_LEVELS) if (elo >= l[1]) cur = l;
+  const next = FACEIT_LEVELS.find((l) => l[0] === cur[0] + 1);
+  if (!next) return { level: 10, done: true, pct: 100 };
+  return { level: cur[0], next: next[0], need: next[1] - elo, pct: Math.round(((elo - cur[1]) / (next[1] - cur[1])) * 100) };
+}
+
 function renderMyStats(list) {
   const box = $("mystats");
-  if (!USER) {
-    box.innerHTML = `<div class="note">Войдите через Steam — здесь появится ваша статистика по всем матчам.</div>`;
-    return;
-  }
-  if (!ME) {
-    box.innerHTML = `<div class="note">Укажите «Мой ник» вверху — здесь появится ваша статистика по всем разобранным матчам.</div>`;
-    return;
-  }
-  // Матчи, где я играл, — от старых к новым
-  const games = [];
-  for (const m of list) {
-    const st = (m.stats || []).find((p) => isMe(p.name));
-    if (!st || st.team < 0) continue;
-    const mine = m.score[st.team], theirs = m.score[1 - st.team];
-    games.push({ m, st, mine, theirs, won: mine > theirs, lost: mine < theirs });
-  }
-  if (!games.length) {
-    box.innerHTML = `<div class="note">Пока нет разобранных матчей с ником ${esc(ME)}.</div>`;
-    return;
-  }
-  games.sort((a, b) => a.m.created - b.m.created);
-
+  if (!USER) { box.innerHTML = `<div class="note">Войдите через Steam — здесь появится ваша статистика по всем матчам.</div>`; return; }
+  let games = myGames().sort((x, y) => y.m.created - x.m.created);
+  if (!games.length) { box.innerHTML = `<div class="note">Пока нет разобранных матчей с вашим ником — загрузите первую демку.</div>`; return; }
+  const totalGames = games.length;
+  if (STATS_PERIOD) games = games.slice(0, STATS_PERIOD);
   const n = games.length;
-  const avg = (key) => games.reduce((s, g) => s + (Number(g.st[key]) || 0), 0) / n;
-  const sum = (key) => games.reduce((s, g) => s + (Number(g.st[key]) || 0), 0);
-  const wins = games.filter((g) => g.won).length;
-  const rating = avg("rating"), kd = sum("kills") / Math.max(1, sum("deaths"));
-  const winrate = Math.round((wins / n) * 100);
 
-  const tile = (label, value, cls = "") => `<div class="tile"><div class="lb">${label}</div><div class="vl ${cls}">${value}</div></div>`;
-  const tiles =
-    tile("Матчей", n) +
-    tile("Побед", `${winrate}%`, winrate >= 50 ? "good" : "bad") +
-    tile("Rating", rating.toFixed(2), rating >= 1.1 ? "good" : rating < 0.9 ? "bad" : "") +
-    tile("K/D", kd.toFixed(2), kd >= 1 ? "good" : "bad") +
-    tile("ADR", avg("adr").toFixed(1)) +
-    tile("KAST", `${Math.round(avg("kast"))}%`) +
-    tile("HS", `${Math.round(avg("hs"))}%`);
+  // Сумма поля по матчам, где оно есть (старые разборы могут не содержать новых полей)
+  const has = (f) => games.filter((g) => g.st[f] != null);
+  const sum = (f, gs = has(f)) => gs.reduce((a, g) => a + (Number(g.st[f]) || 0), 0);
+  const avg = (f) => { const gs = has(f); return gs.length ? sum(f, gs) / gs.length : null; };
+  const pct = (a, b) => (b ? (a / b) * 100 : null);
+  const rounds = (g) => g.st.rounds ?? (g.a + g.b);
+  const hsk = (g) => ((g.st.kills || 0) * (g.st.hs || 0)) / 100;
+  const wins = games.filter((g) => g.a > g.b).length;
+  const kills = sum("kills"), deaths = sum("deaths");
 
-  // Статистика по картам
+  const T = (key, label, value, fmt, help, cnt = n) => ({ key, label, value, fmt, help, cnt });
+  const groups = [
+    ["general", "Общее", [
+      T("rating", "Rating 1.0", avg("rating"), (v) => v.toFixed(2), "Общая оценка игры по формуле HLTV. 1.00 — средний уровень."),
+      T("kd", "K / D", deaths ? kills / deaths : null, (v) => v.toFixed(2), "Убийства, делённые на смерти."),
+      T("kr", "K / R", pct(kills, games.reduce((a, g) => a + rounds(g), 0)) / 100, (v) => v.toFixed(2), "Убийств за раунд."),
+      T("adr", "ADR", avg("adr"), (v) => v.toFixed(1), "Средний урон за раунд."),
+      T("hs", "Хедшоты, %", pct(games.reduce((a, g) => a + hsk(g), 0), kills), (v) => v.toFixed(1), "Доля убийств в голову."),
+      T("kast", "KAST, %", avg("kast"), (v) => v.toFixed(1), "Раунды, где вы убили, ассистнули, выжили или вас разменяли."),
+    ]],
+    ["duels", "Дуэли", [
+      T("opening", "Открывающие дуэли, %", pct(sum("fk"), sum("fk") + sum("fd")), (v) => v.toFixed(1), "Сколько первых дуэлей раунда вы выиграли."),
+      T("tradek", "Размены, %", pct(sum("trades"), sum("kills", has("trades"))), (v) => v.toFixed(1), "Доля ваших убийств, которыми вы отомстили за тиммейта в течение 5 секунд.", has("trades").length),
+      T("traded", "Вас разменяли, %", pct(sum("traded"), sum("deaths", has("traded"))), (v) => v.toFixed(1), "Доля ваших смертей, за которые тиммейт отомстил в течение 5 секунд.", has("traded").length),
+    ]],
+    ["shooting", "Стрельба", [
+      T("acc", "Точность, %", pct(sum("hits"), sum("shots")), (v) => v.toFixed(1), "Попадания по противникам из всех выстрелов (без гранат и ножа).", has("shots").length),
+      T(null, "Убийств за матч", kills / n, (v) => v.toFixed(1), "Среднее число убийств за матч."),
+      T(null, "Урон гранатами за матч", avg("ud"), (v) => v.toFixed(0), "Средний урон HE и молотовами за матч.", has("ud").length),
+    ]],
+    ["multi", "Мульти-киллы", [
+      T(null, "2K", has("k2").length ? sum("k2") : null, (v) => v, "Раунды с двумя убийствами.", has("k2").length),
+      T(null, "3K", sum("k3"), (v) => v, "Раунды с тремя убийствами."),
+      T(null, "4K", sum("k4"), (v) => v, "Раунды с четырьмя убийствами."),
+      T(null, "Эйсы", sum("aces"), (v) => v, "Раунды, где вы убили всю команду соперника."),
+    ]],
+    ["special", "Особые убийства", [
+      T(null, "Без прицела", has("noscope").length ? sum("noscope") : null, (v) => v, "Убийства из снайперской винтовки без прицела.", has("noscope").length),
+      T(null, "Сквозь стены", has("wall").length ? sum("wall") : null, (v) => v, "Убийства прострелом.", has("wall").length),
+      T(null, "Сквозь смок", has("smoke").length ? sum("smoke") : null, (v) => v, "Убийства через дым.", has("smoke").length),
+      T(null, "В ослеплении", has("blind").length ? sum("blind") : null, (v) => v, "Убийства, когда вы были ослеплены.", has("blind").length),
+    ]],
+    ["bomb", "Бомба и MVP", [
+      T(null, "MVP", has("mvps").length ? sum("mvps") : null, (v) => v, "Сколько раз вы были лучшим игроком раунда.", has("mvps").length),
+      T(null, "Заложено бомб", has("plants").length ? sum("plants") : null, (v) => v, "Сколько раз вы поставили бомбу.", has("plants").length),
+      T(null, "Разминировано", has("defuses").length ? sum("defuses") : null, (v) => v, "Сколько раз вы разминировали бомбу.", has("defuses").length),
+    ]],
+  ];
+
+  // Клатчи 1v1–1v5
+  const clutch = { "1v1": [0, 0], "1v2": [0, 0], "1v3": [0, 0], "1v4": [0, 0], "1v5": [0, 0] };
+  const clutchGames = games.filter((g) => g.st.clutch);
+  for (const g of clutchGames) for (const [k, [w, a]] of Object.entries(g.st.clutch)) if (clutch[k]) { clutch[k][0] += w; clutch[k][1] += a; }
+  const cw = Object.values(clutch).reduce((a, c) => a + c[0], 0), ca = Object.values(clutch).reduce((a, c) => a + c[1], 0);
+  groups[1][2].push(T("clutch", "Клатчи, %", ca ? (cw / ca) * 100 : null, (v) => v.toFixed(1), "Выигранные раунды, где вы остались один против нескольких.", clutchGames.length));
+
+  // ---------- Шапка ----------
+  const f = USER.faceit, lp = levelProgress(f?.elo);
+  let html = `<div class="shead"><div class="sprof">` +
+    (USER.avatar ? `<img src="${esc(USER.avatar)}" alt="">` : `<img alt="">`) +
+    `<div><div class="nm">${esc(USER.name)}</div>` +
+    `<div class="mt">Матчей: <b>${totalGames}</b> · <span class="${wins / n >= 0.5 ? "good" : "bad"}">${Math.round((wins / n) * 100)}% побед</span>` +
+    ` за ${n === totalGames ? "все" : "последние " + n}</div></div></div>` +
+    (lp ? `<div class="selo"><div class="mt">${lp.done ? "10 уровень <b class=\"acc\">достигнут!</b>" : `До ${lp.next} уровня: <b>${lp.need}</b> ELO`}</div>` +
+      `<div class="ev"><b>${f.elo}</b> ELO</div><div class="lb"><i style="width:${lp.pct}%"></i></div>` +
+      `<div class="mt sm"><span>${lp.level} ур.</span><span>${lp.done ? "10 ур." : lp.next + " ур."}</span></div></div>` : "") +
+    `</div>`;
+
+  html += `<div class="sbar"><div class="seg" id="sPeriod">` +
+    [[10, "10 матчей"], [20, "20 матчей"], [0, "Все"]].map(([v, l]) => `<button data-p="${v}" class="${STATS_PERIOD === v ? "on" : ""}">${l}</button>`).join("") +
+    `</div><div class="schips">` +
+    [...groups.map(([id, t]) => [id, t]), ["clutches", "Клатчи"], ["trend", "Тренд"]]
+      .map(([id, t]) => `<button data-go="st-${id}">${t}</button>`).join("") + `</div></div>`;
+
+  // ---------- Карточки ----------
+  const card = (m) => {
+    const g = grade(m.key, m.value);
+    const val = m.value == null || isNaN(m.value) ? "—" : m.fmt(m.value);
+    const sub = m.cnt === n ? `${n} ${n === 1 ? "матч" : "матчей"}` : m.cnt ? `по ${m.cnt} из ${n} матчей` : "нет данных в старых разборах";
+    return `<div class="scard ${g ? g[1] : ""}"><div class="top"><span class="lb">${m.label}` +
+      `<span class="q" title="${esc(m.help)}">?</span></span>${g ? `<span class="gr">${g[0]}</span>` : ""}</div>` +
+      `<div class="vl">${val}</div><div class="sb">${sub}</div></div>`;
+  };
+  for (const [id, title, metrics] of groups) {
+    html += `<h2 id="st-${id}">${title}</h2><div class="sgrid">${metrics.map(card).join("")}</div>`;
+  }
+
+  html += `<h2 id="st-clutches">Клатчи</h2><div class="cgrid">` + Object.entries(clutch).map(([k, [w, a]]) => {
+    const p = a ? Math.round((w / a) * 100) : 0;
+    const col = p >= 50 ? "var(--win)" : p >= 25 ? "#e8b14a" : "var(--lose)";
+    return `<div class="ccell"><div class="lb">${k}</div><div class="vl">${w}<small>/${a}</small></div><div class="sb">${p}%</div>` +
+      `<div class="cb"><i style="width:${p}%;background:${col}"></i></div></div>`;
+  }).join("") + `</div>` +
+    (clutchGames.length < n ? `<div class="note">Попытки клатчей считаются в ${clutchGames.length} из ${n} матчей — старые разборы их не содержат.</div>` : "");
+
+  // ---------- Тренд и карты ----------
+  const METRICS = [["rating", "Rating"], ["kd", "K / D"], ["adr", "ADR"], ["kast", "KAST"], ["hs", "HS %"]];
+  html += `<h2 id="st-trend">Тренд по матчам</h2><div class="mygrid"><div class="chart">` +
+    `<div class="seg tseg" id="tMetric">${METRICS.map(([k, l]) => `<button data-m="${k}" class="${TREND_METRIC === k ? "on" : ""}">${l}</button>`).join("")}</div>` +
+    `${trendChart(games.slice().reverse(), TREND_METRIC)}</div>` +
+    `<div class="maps"><h3>Карты: победы–поражения и средний Rating</h3>${mapsTable(games)}</div></div>`;
+
+  box.innerHTML = html;
+  box.querySelectorAll("#sPeriod button").forEach((b) => b.addEventListener("click", () => { STATS_PERIOD = +b.dataset.p; renderMyStats(); }));
+  box.querySelectorAll("#tMetric button").forEach((b) => b.addEventListener("click", () => { TREND_METRIC = b.dataset.m; renderMyStats(); }));
+  box.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => {
+    const el = $(b.dataset.go);
+    window.scrollTo({ top: el.getBoundingClientRect().top + scrollY - 130, behavior: "smooth" });
+  }));
+  box.querySelectorAll("circle[data-id]").forEach((c) => c.addEventListener("click", () => openMatch(c.dataset.id, true)));
+}
+
+function mapsTable(games) {
   const byMap = {};
   for (const g of games) {
     const k = mapTitle(g.m.map);
     byMap[k] = byMap[k] || { n: 0, w: 0, r: 0 };
-    byMap[k].n++; if (g.won) byMap[k].w++; byMap[k].r += Number(g.st.rating) || 0;
+    byMap[k].n++; if (g.a > g.b) byMap[k].w++; byMap[k].r += Number(g.st.rating) || 0;
   }
-  const maps = Object.entries(byMap).sort((a, b) => b[1].n - a[1].n).map(([name, v]) => {
+  return Object.entries(byMap).sort((a, b) => b[1].n - a[1].n).map(([name, v]) => {
     const r = v.r / v.n, wr = Math.round((v.w / v.n) * 100);
     const cls = r >= 1.1 ? "good" : r < 0.9 ? "bad" : "";
-    return `<div class="maprow"><span>${esc(name)}</span>` +
-      `<span class="wr" title="Побед ${wr}%"><i style="width:${wr}%"></i></span>` +
+    return `<div class="maprow"><span>${esc(name)}</span><span class="wr" title="Побед ${wr}%"><i style="width:${wr}%"></i></span>` +
       `<span class="n">${v.w}–${v.n - v.w}</span><span class="r ${cls}">${r.toFixed(2)}</span></div>`;
   }).join("");
-
-  box.innerHTML = `<div class="tiles">${tiles}</div>` +
-    `<div class="mygrid"><div class="chart"><h3>Rating по матчам</h3>${ratingChart(games)}</div>` +
-    `<div class="maps"><h3>Карты: победы–поражения и средний Rating</h3>${maps}</div></div>`;
-  box.querySelectorAll("circle[data-id]").forEach((c) => c.addEventListener("click", () => openMatch(c.dataset.id, true)));
 }
 
-// Линейный график рейтинга (SVG). Пунктир — уровень 1.00, точки: зелёные — победы, красные — поражения
-function ratingChart(games) {
-  const W = 600, H = 190, L = 34, Rt = 10, T = 12, B = 22;
-  const vals = games.map((g) => Number(g.st.rating) || 0);
-  const top = Math.max(2, Math.ceil(Math.max(...vals) * 2) / 2), bottom = 0;
-  const x = (i) => games.length === 1 ? (L + W - Rt) / 2 : L + (i * (W - L - Rt)) / (games.length - 1);
-  const y = (v) => T + ((top - v) * (H - T - B)) / (top - bottom);
-
+// Линейный график показателя по матчам (SVG): точки зелёные — победы, красные — поражения
+function trendChart(games, metric) {
+  const val = (g) => metric === "kd" ? (g.st.deaths ? g.st.kills / g.st.deaths : g.st.kills) : Number(g.st[metric]);
+  const pts = games.map((g) => ({ g, v: val(g) })).filter((p) => p.v != null && !isNaN(p.v));
+  if (!pts.length) return `<div class="note">Нет данных</div>`;
+  const W = 600, H = 210, L = 40, Rt = 12, T = 12, B = 28;
+  const vals = pts.map((p) => p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const padv = (hi - lo || 1) * 0.15; lo = Math.max(0, lo - padv); hi += padv;
+  const x = (i) => pts.length === 1 ? (L + W - Rt) / 2 : L + (i * (W - L - Rt)) / (pts.length - 1);
+  const y = (v) => T + ((hi - v) * (H - T - B)) / (hi - lo);
+  const digits = metric === "rating" || metric === "kd" ? 2 : 0;
   let grid = "";
-  for (let v = 0; v <= top + 1e-9; v += 0.5) {
-    grid += `<line x1="${L}" x2="${W - Rt}" y1="${y(v)}" y2="${y(v)}" ` +
-            (v === 1 ? `stroke="#8b909c" stroke-dasharray="5 5"/>` : `stroke="#262a33"/>`) +
-            `<text x="${L - 6}" y="${y(v) + 4}" fill="#8b909c" font-size="11" text-anchor="end">${v.toFixed(1)}</text>`;
+  for (let i = 0; i <= 3; i++) {
+    const v = lo + ((hi - lo) * i) / 3;
+    grid += `<line x1="${L}" x2="${W - Rt}" y1="${y(v)}" y2="${y(v)}" stroke="#262a33"/>` +
+            `<text x="${L - 6}" y="${y(v) + 4}" fill="#8b909c" font-size="11" text-anchor="end">${v.toFixed(digits)}</text>`;
   }
-  const line = games.length > 1
-    ? `<polyline fill="none" stroke="#ff5a1f" stroke-width="2.5" stroke-linejoin="round" points="${vals.map((v, i) => `${x(i)},${y(v)}`).join(" ")}"/>`
-    : "";
-  const dots = games.map((g, i) => {
-    const color = g.won ? "#2fb36b" : g.lost ? "#e0474c" : "#8b909c";
-    const tip = `${mapTitle(g.m.map)} ${g.mine}:${g.theirs} · Rating ${vals[i].toFixed(2)} — открыть`;
-    return `<circle data-id="${esc(g.m.id)}" cx="${x(i)}" cy="${y(vals[i])}" r="6" fill="${color}" stroke="#181b22" stroke-width="2"><title>${esc(tip)}</title></circle>`;
+  const ref = { rating: 1, kd: 1 }[metric];
+  if (ref && ref > lo && ref < hi) grid += `<line x1="${L}" x2="${W - Rt}" y1="${y(ref)}" y2="${y(ref)}" stroke="#8b909c" stroke-dasharray="5 5"/>`;
+  const dfmt = (ts) => new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "numeric" });
+  const step = Math.max(1, Math.ceil(pts.length / 6));
+  const labels = pts.map((p, i) => (i % step === 0 || i === pts.length - 1)
+    ? `<text x="${x(i)}" y="${H - 8}" fill="#8b909c" font-size="11" text-anchor="middle">${dfmt(p.g.m.created)}</text>` : "").join("");
+  const line = pts.length > 1 ? `<polyline fill="none" stroke="#8f86f0" stroke-width="2.5" stroke-linejoin="round" points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}"/>` : "";
+  const dots = pts.map((p, i) => {
+    const color = p.g.a > p.g.b ? "#2fb36b" : p.g.a < p.g.b ? "#e0474c" : "#8b909c";
+    const tip = `${mapTitle(p.g.m.map)} ${p.g.a}:${p.g.b} · ${p.v.toFixed(digits || 1)} — открыть`;
+    return `<circle data-id="${esc(p.g.m.id)}" cx="${x(i)}" cy="${y(p.v)}" r="5.5" fill="${color}" stroke="#15171d" stroke-width="2"><title>${esc(tip)}</title></circle>`;
   }).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="График рейтинга по матчам">${grid}${line}${dots}` +
-    `<text x="${L}" y="${H - 4}" fill="#8b909c" font-size="11">старые</text>` +
-    `<text x="${W - Rt}" y="${H - 4}" fill="#8b909c" font-size="11" text-anchor="end">новые</text></svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="График по матчам">${grid}${line}${dots}${labels}</svg>`;
 }
 
 async function openMatch(id, push) {

@@ -168,16 +168,18 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
             "shots": [s for s in shots if r["start"] <= s[0] <= r["end"]],
         })
 
-    highlights = find_highlights(replay_rounds, player_ids, kills, deaths)
-    return {"step": REPLAY_STEP, "rounds": replay_rounds, "highlights": highlights}
+    highlights, clutch_stats = find_highlights(replay_rounds, player_ids, kills, deaths)
+    return {"step": REPLAY_STEP, "rounds": replay_rounds, "highlights": highlights, "clutch_stats": clutch_stats}
 
 
 def find_highlights(replay_rounds: list[dict], player_ids: list[str],
-                    kills: pd.DataFrame, deaths: pd.DataFrame) -> list[dict]:
-    """Ищем яркие моменты: мульти-киллы (3K, 4K, ACE) и выигранные клатчи (1vN)."""
+                    kills: pd.DataFrame, deaths: pd.DataFrame) -> tuple[list[dict], dict]:
+    """Ищем яркие моменты: мульти-киллы (3K, 4K, ACE) и выигранные клатчи (1vN).
+    Заодно считаем все клатчи — попытки и победы: clutch_stats[игрок]["1v2"] = [побед, попыток]."""
     index = {sid: i for i, sid in enumerate(player_ids)}
     side_name = {2: "T", 3: "CT"}
     result = []
+    clutch_stats: dict[int, dict[str, list[int]]] = {}
 
     for ri, r in enumerate(replay_rounds):
         if not r["frames"]:
@@ -202,24 +204,27 @@ def find_highlights(replay_rounds: list[dict], player_ids: list[str],
 
         # --- Клатчи: проходим по смертям по порядку и следим, кто остался жив ---
         rd = deaths[(deaths["tick"] >= r["start"]) & (deaths["tick"] <= r["end"])].sort_values("tick")
-        clutch = None          # (игрок, против скольких, тик)
+        clutches = {}          # команда → (игрок, против скольких, тик): первый момент, когда игрок остался один
         for row in rd.itertuples(index=False):
             vi = index.get(str(row.user_steamid))
             if vi is None:
                 continue
             alive.discard(vi)
-            if clutch:
-                continue
             for team in (2, 3):
+                if team in clutches:
+                    continue
                 mine = [i for i in alive if side.get(i) == team]
                 enemies = [i for i in alive if side.get(i) not in (team, None)]
                 if len(mine) == 1 and len(enemies) >= 1:
-                    clutch = (mine[0], len(enemies), int(row.tick))
-                    break
+                    clutches[team] = (mine[0], len(enemies), int(row.tick))
 
-        if clutch:
-            player, vs, tick = clutch
-            if side_name.get(side.get(player)) == r["winner"]:
+        for player, vs, tick in clutches.values():
+            won = side_name.get(side.get(player)) == r["winner"]
+            cs = clutch_stats.setdefault(player, {}).setdefault(f"1v{min(vs, 5)}", [0, 0])
+            cs[1] += 1
+            if won:
+                cs[0] += 1
+            if won:
                 result.append({
                     "round": ri,
                     "tick": tick,
@@ -231,7 +236,7 @@ def find_highlights(replay_rounds: list[dict], player_ids: list[str],
     # Сначала самые крутые: ACE, 1v5 ... потом по раунду
     order = {"ACE": 0, "1v5": 1, "1v4": 2, "4K": 3, "1v3": 4, "3K": 5, "1v2": 6, "1v1": 7}
     result.sort(key=lambda h: (order.get(h["type"], 9), h["round"]))
-    return result
+    return result, clutch_stats
 
 
 def is_missing(v) -> bool:
@@ -372,7 +377,7 @@ def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame
                    enemy_hurts: pd.DataFrame, player_ids: list[str]) -> dict:
     """KAST, первые убийства/смерти, урон гранатами и Rating 1.0 (формула HLTV)."""
     n = max(len(rounds), 1)
-    st = {sid: {"kast_rounds": 0, "fk": 0, "fd": 0, "mk": [0] * 6} for sid in player_ids}
+    st = {sid: {"kast_rounds": 0, "fk": 0, "fd": 0, "mk": [0] * 6, "trades": 0, "traded": 0} for sid in player_ids}
 
     for r in rounds:
         in_round = lambda df: df[(df["tick"] >= r["start"]) & (df["tick"] <= r["end"])]
@@ -410,6 +415,19 @@ def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame
         for sid in st:
             if sid in killed or sid in assisted or sid not in died or sid in traded:
                 st[sid]["kast_rounds"] += 1
+            if sid in traded:
+                st[sid]["traded"] += 1
+
+        # Размен-убийство: я убил того, кто только что (до 5 секунд) убил моего тиммейта
+        for i, k in enumerate(rows):
+            if k.attacker_steamid not in st or k.attacker_team_num == k.user_team_num:
+                continue
+            for earlier in reversed(rows[:i]):
+                if k.tick - earlier.tick > TRADE_TICKS:
+                    break
+                if earlier.attacker_steamid == k.user_steamid and earlier.user_team_num == k.attacker_team_num:
+                    st[k.attacker_steamid]["trades"] += 1
+                    break
 
     # Урон гранатами по противникам
     util = {}
@@ -432,8 +450,59 @@ def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame
             "fk": s["fk"],
             "fd": s["fd"],
             "ud": round(float(util.get(sid, 0))),
+            "rounds": len(rounds),
+            "k2": mk[2], "k3": mk[3], "k4": mk[4], "k5": mk[5],
+            "trades": s["trades"],
+            "traded": s["traded"],
         }
     return result
+
+
+GUN_SKIP = ("knife", "bayonet", "grenade", "flashbang", "smoke", "molotov", "incendiary", "decoy", "c4", "taser", "inferno", "world")
+
+
+def extra_stats(parser: DemoParser, kills: pd.DataFrame, enemy_hurts: pd.DataFrame, player_ids: list[str]) -> dict:
+    """Точность стрельбы, особые убийства, бомба и MVP — для страницы «Статистика»."""
+    out = {sid: {"shots": 0, "hits": 0, "noscope": 0, "smoke": 0, "wall": 0, "blind": 0,
+                 "plants": 0, "defuses": 0, "mvps": 0} for sid in player_ids}
+
+    def is_gun(w) -> bool:
+        w = str(w).lower()
+        return bool(w) and not any(x in w for x in GUN_SKIP)
+
+    def count(df: pd.DataFrame, col: str, key: str, mask=None):
+        if df.empty or col not in df.columns:
+            return
+        if mask is not None:
+            df = df[mask]
+        for sid, n in df[col].astype(str).value_counts().items():
+            if sid in out:
+                out[sid][key] += int(n)
+
+    def safe(event):
+        try:
+            return drop_warmup(parser.parse_event(event, other=["is_warmup_period"]))
+        except Exception:
+            return pd.DataFrame()
+
+    # Точность: выстрелы из оружия и попадания по противникам
+    fires = safe("weapon_fire")
+    if not fires.empty and "weapon" in fires.columns:
+        count(fires, "user_steamid", "shots", fires["weapon"].map(is_gun))
+    if "weapon" in enemy_hurts.columns:
+        count(enemy_hurts, "attacker_steamid", "hits", enemy_hurts["weapon"].map(is_gun))
+
+    # Особые убийства (поля события player_death)
+    for col, key in (("noscope", "noscope"), ("thrusmoke", "smoke"), ("attackerblind", "blind")):
+        if col in kills.columns:
+            count(kills, "attacker_steamid", key, kills[col].fillna(False).astype(bool))
+    if "penetrated" in kills.columns:
+        count(kills, "attacker_steamid", "wall", pd.to_numeric(kills["penetrated"], errors="coerce").fillna(0) > 0)
+
+    count(safe("bomb_planted"), "user_steamid", "plants")
+    count(safe("bomb_defused"), "user_steamid", "defuses")
+    count(safe("round_mvp"), "user_steamid", "mvps")
+    return out
 
 
 def kill_events(rounds: list[dict], deaths: pd.DataFrame, player_ids: list[str]) -> list[list]:
@@ -505,7 +574,9 @@ def analyze_demo(demo_path: Path) -> dict:
     if "team_number" in players.columns:
         players = players[players["team_number"].isin([2, 3])]
 
-    adv = advanced_stats(rounds, deaths, kills, enemy_hurts, [str(x) for x in players["steamid"]])
+    ids = [str(x) for x in players["steamid"]]
+    adv = advanced_stats(rounds, deaths, kills, enemy_hurts, ids)
+    ext = extra_stats(parser, kills, enemy_hurts, ids)
 
     player_rows = []
     for _, p in players.iterrows():
@@ -527,6 +598,7 @@ def analyze_demo(demo_path: Path) -> dict:
             "hs": round(hs / k * 100) if k else 0,
             "adr": round(dmg / num_rounds, 1),
             **adv.get(sid, {}),
+            **ext.get(sid, {}),
         })
 
     # Дуэли: duels[убийца][жертва] = сколько раз
@@ -536,6 +608,8 @@ def analyze_demo(demo_path: Path) -> dict:
 
     # 2D-реплей: игроки в том же порядке, что и в player_rows
     replay = build_replay(parser, rounds, [p["steamid"] for p in player_rows], kills, deaths)
+    for i, row in enumerate(player_rows):
+        row["clutch"] = replay.get("clutch_stats", {}).get(i, {})
 
     return {
         "map": header.get("map_name", "?"),
