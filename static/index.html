@@ -103,6 +103,20 @@
   .mrow a:hover { text-decoration: underline; }
   @media (max-width: 700px) { .mrow { grid-template-columns: 6px 1fr 60px 70px; } .mrow .hide { display: none; } }
 
+  /* Разобранные матчи */
+  .hist { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .mcard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+           cursor: pointer; color: var(--text); font: inherit; text-align: left; transition: .15s; }
+  .mcard:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .mcard .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .mcard .mp { font-weight: 700; font-size: 16px; }
+  .mcard .sc { font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .mcard .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .mcard .mvp { margin-top: 8px; font-size: 13px; }
+  .mcard .mvp b { color: var(--accent); }
+  .chip.btn { cursor: pointer; color: var(--text); font: inherit; }
+  .chip.btn:hover { border-color: var(--accent); }
+
   /* Разбор игрока */
   .pctrl { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .pctrl select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
@@ -203,6 +217,9 @@
   </form>
   <div id="player"></div>
 
+  <h2>Разобранные матчи</h2>
+  <div class="hist" id="history"></div>
+
   <h2>Разбор демки</h2>
   <label class="drop" id="drop">
     <input type="file" id="file" accept=".dem,.gz,.zst">
@@ -291,6 +308,69 @@ function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.className = "status" + (isError ? " err" : "");
 }
+
+// ---------- Сохранённые матчи ----------
+const mapTitle = (m) => (m || "?").replace(/^de_/, "").replace(/^./, (c) => c.toUpperCase());
+
+async function loadHistory() {
+  try {
+    const list = await (await fetch("/api/matches")).json();
+    if (!list.length) {
+      $("history").innerHTML = `<div class="note">Пока пусто — загрузите первую демку ниже.</div>`;
+      return;
+    }
+    $("history").innerHTML = list.map((m) => {
+      const date = new Date(m.created * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      const names = (m.teams || []).map((t) => t.join(", ")).join(" vs ");
+      return `<button class="mcard" data-id="${esc(m.id)}" title="${esc(names)}">` +
+        `<div class="top"><span class="mp">${esc(mapTitle(m.map))}</span><span class="sc">${m.score[0]} : ${m.score[1]}</span></div>` +
+        `<div class="sub">${date}${m.highlights ? ` · ${m.highlights} хайлайтов` : ""}</div>` +
+        (m.mvp ? `<div class="mvp">MVP: ${esc(m.mvp.name)} <b>${(m.mvp.rating ?? 0).toFixed(2)}</b></div>` : "") +
+        `</button>`;
+    }).join("");
+    $("history").querySelectorAll(".mcard").forEach((b) => b.addEventListener("click", () => openMatch(b.dataset.id, true)));
+  } catch {
+    $("history").innerHTML = `<div class="note">Не удалось загрузить список матчей</div>`;
+  }
+}
+
+async function openMatch(id, push) {
+  stop();
+  setStatus("Открываем матч...");
+  try {
+    const res = await fetch(`/api/match/${encodeURIComponent(id)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Матч не найден");
+    setStatus("");
+    showMatch(data, push);
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+}
+
+// Показать разбор и поменять адрес страницы на /match/<id>, чтобы им можно было поделиться
+function showMatch(data, push) {
+  render(data);
+  if (data.id && push) history.pushState({ id: data.id }, "", `/match/${data.id}`);
+  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function copyLink(id) {
+  const url = `${location.origin}/match/${id}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    $("copyLink").textContent = "✅ Ссылка скопирована";
+  } catch {
+    prompt("Скопируйте ссылку:", url);
+  }
+}
+
+// Кнопки «назад/вперёд» в браузере
+window.addEventListener("popstate", () => {
+  const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
+  if (m) openMatch(m[1], false);
+  else { stop(); $("result").style.display = "none"; window.scrollTo({ top: 0 }); }
+});
 
 // ---------- Поиск игрока FACEIT ----------
 $("search").addEventListener("submit", async (e) => {
@@ -394,7 +474,8 @@ async function upload(file) {
     }
     bar.style.display = "none";
     setStatus("Готово!");
-    render(data);
+    showMatch(data, true);
+    loadHistory();
   } catch (err) {
     bar.style.display = "none";
     setStatus(err.message, true);
@@ -409,7 +490,9 @@ function render(data) {
 
   $("meta").innerHTML =
     `<div class="chip">Карта: <b>${esc(data.map)}</b></div>` +
-    `<div class="chip">Раундов: <b>${data.rounds}</b></div>`;
+    `<div class="chip">Раундов: <b>${data.rounds}</b></div>` +
+    (data.id ? `<button class="chip btn" id="copyLink">🔗 Скопировать ссылку на матч</button>` : "");
+  if (data.id) $("copyLink").addEventListener("click", () => copyLink(data.id));
 
   let html = `<tr><th>Игрок</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>ADR</th><th>HS%</th>` +
     `<th title="Раунды, где игрок убил, ассистнул, выжил или его разменяли">KAST</th>` +
@@ -1120,6 +1203,13 @@ function tick(ts) {
 
 $("play").addEventListener("click", () => (R.playing ? stop() : play()));
 $("seek").addEventListener("input", (e) => { R.pos = Number(e.target.value); draw(); });
+
+// ---------- При открытии страницы ----------
+loadHistory();
+{
+  const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
+  if (m) openMatch(m[1], false);
+}
 </script>
 </body>
 </html>

@@ -2,9 +2,12 @@
 # Запуск:  uvicorn app:app --reload
 # Потом откройте в браузере http://127.0.0.1:8000
 
+import gzip
+import hashlib
 import json
 import os
 import re
+import time
 import shutil
 import urllib.error
 import urllib.parse
@@ -13,7 +16,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from analyzer import analyze_demo, prepare_demo
@@ -24,6 +27,10 @@ UPLOADS.mkdir(exist_ok=True)
 
 ALLOWED = (".dem.zst", ".dem.gz", ".dem")
 MAX_UPLOAD = 700 * 1024 * 1024        # больше 700 МБ не принимаем — защита от слишком больших файлов
+
+MATCHES = BASE / "matches"           # сохранённые разборы: <id>.json.gz (весь разбор) и <id>.meta.json (карточка)
+MATCHES.mkdir(exist_ok=True)
+MATCH_ID = re.compile(r"[a-f0-9]{12}")
 
 
 def load_env(path: Path) -> None:
@@ -52,18 +59,102 @@ def index():
     return FileResponse(BASE / "static" / "index.html")
 
 
-def run_analysis(raw: Path) -> dict:
-    """Распаковать, разобрать и удалить файлы демки."""
+def file_id(path: Path) -> str:
+    """Отпечаток файла: одинаковая демка всегда даёт одинаковый номер — так находим уже разобранные."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()[:12]
+
+
+def to_plain(o):
+    """numpy-числа и прочее превращаем в обычные значения для JSON."""
+    return o.item() if hasattr(o, "item") else str(o)
+
+
+def match_summary(mid: str, data: dict) -> dict:
+    """Короткая карточка матча для списка на главной."""
+    players = data.get("players", [])
+    teams = sorted({p["team"] for p in players})
+    score = [0, 0]
+    for r in data.get("replay", {}).get("rounds", []):
+        frame = r["frames"][0] if r.get("frames") else []
+        i = next((i for i, p in enumerate(players) if teams and p["team"] == teams[0] and i < len(frame) and frame[i]), None)
+        if i is None or not r.get("winner"):
+            continue
+        side = "T" if frame[i][3] == 2 else "CT"
+        score[0 if r["winner"] == side else 1] += 1
+    best = max(players, key=lambda p: p.get("rating") or 0, default=None)
+    return {
+        "id": mid,
+        "map": data.get("map", "?"),
+        "score": score,
+        "created": int(time.time()),
+        "mvp": {"name": best["name"], "rating": best.get("rating")} if best else None,
+        "teams": [[p["name"] for p in players if p["team"] == t] for t in teams],
+        "highlights": len(data.get("replay", {}).get("highlights", [])),
+    }
+
+
+def save_match(mid: str, data: dict) -> None:
+    with gzip.open(MATCHES / f"{mid}.json.gz", "wt", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, separators=(",", ":"), default=to_plain)
+    (MATCHES / f"{mid}.meta.json").write_text(
+        json.dumps(match_summary(mid, data), ensure_ascii=False, default=to_plain), encoding="utf-8")
+
+
+def saved_match_response(mid: str) -> Response:
+    """Отдаём сохранённый разбор как есть, в сжатом виде — браузер сам распакует."""
+    return Response(content=(MATCHES / f"{mid}.json.gz").read_bytes(), media_type="application/json",
+                    headers={"Content-Encoding": "gzip"})
+
+
+def run_analysis(raw: Path):
+    """Если такую демку уже разбирали — сразу отдаём сохранённое. Иначе разбираем, сохраняем и удаляем демку."""
     dem = None
     try:
+        mid = file_id(raw)
+        if (MATCHES / f"{mid}.json.gz").exists():
+            return saved_match_response(mid)
         dem = prepare_demo(raw)
-        return analyze_demo(dem)
+        data = analyze_demo(dem)
+        data["id"] = mid
+        save_match(mid, data)
+        return saved_match_response(mid)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Не удалось разобрать демку: {e}")
     finally:
         raw.unlink(missing_ok=True)
         if dem is not None and dem != raw:
             dem.unlink(missing_ok=True)
+
+
+@app.get("/match/{mid}")
+def match_page(mid: str):
+    """Ссылка на конкретный матч открывает ту же страницу — она сама загрузит разбор."""
+    return FileResponse(BASE / "static" / "index.html")
+
+
+@app.get("/api/match/{mid}")
+def get_match(mid: str):
+    if not MATCH_ID.fullmatch(mid) or not (MATCHES / f"{mid}.json.gz").exists():
+        raise HTTPException(404, "Матч не найден")
+    return saved_match_response(mid)
+
+
+@app.get("/api/matches")
+def list_matches():
+    """Все сохранённые матчи, новые сверху."""
+    metas = []
+    for path in MATCHES.glob("*.meta.json"):
+        try:
+            metas.append(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    return sorted(metas, key=lambda m: m.get("created", 0), reverse=True)[:60]
 
 
 @app.post("/api/chunk")
