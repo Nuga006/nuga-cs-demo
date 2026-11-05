@@ -215,6 +215,51 @@
   .score .sep { color: var(--muted); }
   .score .lead { color: var(--win); }
   .score .small { color: var(--muted); font-weight: 400; font-size: 13px; }
+
+  /* Таблицы, которые листаются вбок: ник игрока (первая колонка) остаётся на месте */
+  .scroll th:first-child, .scroll td:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+  .scroll tr.team-head td:first-child { background: #1f232c; }
+  .scroll tr.me td:first-child { background: #2a1f1a; }
+
+  /* ---------- Телефон ---------- */
+  @media (max-width: 600px) {
+    .wrap { padding: 20px 12px 48px; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 17px; margin-top: 24px; }
+    .sub { margin-bottom: 20px; font-size: 14px; }
+    .mebar { margin-top: -8px; }
+    .mebar input { width: 140px; }
+
+    .drop { padding: 28px 12px; }
+
+    /* Счёт над реплеем: названия и цифры в одну строку, пояснение — отдельной строкой */
+    .score { flex-wrap: wrap; gap: 4px 10px; padding: 10px; font-size: 14px; }
+    .score .num { font-size: 22px; }
+    .score .small { width: 100%; text-align: center; }
+
+    /* Кнопки раундов — одной строкой с прокруткой, а не в три ряда */
+    .rounds { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+    .rounds::-webkit-scrollbar { display: none; }
+    .rbtn { flex: 0 0 auto; width: 40px; padding: 6px 0; }
+
+    .stage { padding: 6px; }
+    .controls { gap: 6px; }
+    .controls button { min-width: 0; padding: 8px 12px; }
+
+    /* Таблица команд в реплее: убираем оружие, чтобы ники не обрезались */
+    .prow { grid-template-columns: minmax(0, 1fr) 36px auto 52px; padding: 5px 10px; }
+    .prow .wp { display: none; }
+
+    th, td { padding: 7px 8px; font-size: 13px; }
+    .duel td { min-width: 58px; }
+    .cell { min-width: 44px; padding: 3px 4px; }
+
+    .hist { grid-template-columns: 1fr; }
+    .pctrl select { min-width: 0; flex: 1; }
+    .wrow { grid-template-columns: 90px 1fr 28px 52px; }
+    .pcard .nm { font-size: 16px; }
+    .pcard img { width: 44px; height: 44px; }
+  }
 </style>
 </head>
 <body>
@@ -748,7 +793,16 @@ function toCanvas(x, y) {
   return [offX + (x - b.minX) * s, offY + (b.maxY - y) * s];
 }
 
+// Во сколько раз увеличить значки на карте. Холст всегда 1024 точки, а на экране он бывает
+// 600 точек (компьютер) или 340 (телефон). Чем сильнее сжатие — тем крупнее рисуем ники и значки.
+let U = 1;
+function uiScale() {
+  const w = canvas.clientWidth || 600;
+  return Math.min(2, Math.max(1, 600 / w));
+}
+
 function draw() {
+  U = uiScale();
   const r = R.data?.replay?.rounds?.[R.round];
   ctx.fillStyle = "#0b0d11";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -765,7 +819,7 @@ function draw() {
   drawShots(r, curTick);
   drawBomb(r, curTick);
 
-  ctx.font = "bold 20px system-ui, sans-serif";
+  ctx.font = `bold ${Math.round(20 * U)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
   R.data.players.forEach((pl, i) => {
     const p = fa[i];
@@ -784,20 +838,20 @@ function draw() {
 
       // Живой игрок — кружок и ник
       ctx.beginPath();
-      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.arc(x, y, 11 * U, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = "#0b0d11"; ctx.stroke();
       if (isMe(pl.name)) {
-        ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(x, y, 16 * U, 0, Math.PI * 2);
         ctx.lineWidth = 3; ctx.strokeStyle = "#ff5a1f"; ctx.stroke();
       }
       ctx.fillStyle = isMe(pl.name) ? "#ff8a5c" : "#fff";
-      ctx.font = "bold 20px system-ui, sans-serif";
-      ctx.fillText(pl.name, x, y - 18);
+      ctx.font = `bold ${Math.round(20 * U)}px system-ui, sans-serif`;
+      ctx.fillText(pl.name, x, y - 18 * U);
 
       // Полоска HP под игроком: зелёная → жёлтая → красная
       const hp = Math.max(0, Math.min(100, p[4] ?? 100));
-      const w = 34, h = 5, bx = x - w / 2, by = y + 16;
+      const w = 34 * U, h = 5 * U, bx = x - w / 2, by = y + 16 * U;
       ctx.fillStyle = "rgba(0,0,0,.7)";
       ctx.fillRect(bx - 1, by - 1, w + 2, h + 2);
       ctx.fillStyle = hp > 60 ? "#2fb36b" : hp > 25 ? "#e8b14a" : "#e0474c";
@@ -805,16 +859,17 @@ function draw() {
 
       // Оружие в руках
       if (p[5]) {
-        ctx.font = "15px system-ui, sans-serif";
+        ctx.font = `${Math.round(15 * U)}px system-ui, sans-serif`;
         ctx.fillStyle = "rgba(232,233,236,.75)";
-        ctx.fillText(p[5], x, by + 20);
+        ctx.fillText(p[5], x, by + 20 * U);
       }
     } else {
       // Мёртвый — крестик на месте смерти
-      ctx.strokeStyle = color; ctx.globalAlpha = 0.7; ctx.lineWidth = 4;
+      const c = 9 * U;
+      ctx.strokeStyle = color; ctx.globalAlpha = 0.7; ctx.lineWidth = 4 * U;
       ctx.beginPath();
-      ctx.moveTo(x - 9, y - 9); ctx.lineTo(x + 9, y + 9);
-      ctx.moveTo(x + 9, y - 9); ctx.lineTo(x - 9, y + 9);
+      ctx.moveTo(x - c, y - c); ctx.lineTo(x + c, y + c);
+      ctx.moveTo(x + c, y - c); ctx.lineTo(x - c, y + c);
       ctx.stroke(); ctx.globalAlpha = 1;
     }
   });
@@ -1161,7 +1216,7 @@ function renderTeams(r, frame, curTick) {
 // В игре 0° — это восток, 90° — север. На холсте ось Y смотрит вниз, поэтому угол берём с минусом.
 function drawView(x, y, yaw, color) {
   const ang = (-yaw * Math.PI) / 180;
-  const reach = 90, half = (22 * Math.PI) / 180;   // длина конуса и половина угла обзора
+  const reach = 90 * U, half = (22 * Math.PI) / 180;   // длина конуса и половина угла обзора
 
   const g = ctx.createRadialGradient(x, y, 0, x, y, reach);
   g.addColorStop(0, hexToRgba(color, 0.45));
@@ -1174,7 +1229,7 @@ function drawView(x, y, yaw, color) {
   ctx.fill();
 
   // Короткая стрелка точно по направлению взгляда
-  const ex = x + Math.cos(ang) * 26, ey = y + Math.sin(ang) * 26;
+  const ex = x + Math.cos(ang) * 26 * U, ey = y + Math.sin(ang) * 26 * U;
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(ex, ey);
@@ -1206,11 +1261,11 @@ function drawBomb(r, curTick) {
   // Мигание, пока бомба тикает
   const blink = !defused && !exploded && Math.floor(curTick / 32) % 2 === 0;
   ctx.fillStyle = defused ? "#2fb36b" : blink ? "#ff3b30" : "#a3241c";
-  ctx.fillRect(x - 12, y - 9, 24, 18);
+  ctx.fillRect(x - 12 * U, y - 9 * U, 24 * U, 18 * U);
   ctx.fillStyle = "#fff";
-  ctx.font = "bold 12px system-ui, sans-serif";
+  ctx.font = `bold ${Math.round(12 * U)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
-  ctx.fillText("C4", x, y + 4);
+  ctx.fillText("C4", x, y + 4 * U);
 }
 
 function renderFeed(r, curTick) {
@@ -1266,6 +1321,7 @@ function tick(ts) {
   requestAnimationFrame(tick);
 }
 
+window.addEventListener("resize", () => { if (R.data) { draw(); } });
 $("play").addEventListener("click", () => (R.playing ? stop() : play()));
 $("seek").addEventListener("input", (e) => { R.pos = Number(e.target.value); draw(); });
 
