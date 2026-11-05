@@ -335,6 +335,32 @@
   .userbar a.out { color: var(--muted); font-size: 13px; text-decoration: none; border: 1px solid var(--line);
                    border-radius: 999px; padding: 5px 12px; }
   .userbar a.out:hover { color: var(--text); border-color: #3a3f4b; }
+  .coinbtn { display: flex; align-items: center; gap: 6px; background: rgba(232,197,71,.12); color: #e8c547; border: 0;
+             border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 800; font-size: 14px; cursor: pointer; position: relative; }
+  .coinbtn:hover { background: rgba(232,197,71,.2); }
+  .coinbtn .dot { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--lose); }
+  .coin { display: inline-block; width: 16px; height: 16px; border-radius: 50%; vertical-align: -2px;
+          background: radial-gradient(circle at 35% 35%, #ffe58a, #e8b020 60%, #b8860b); box-shadow: inset 0 -1px 0 rgba(0,0,0,.25); }
+  .modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; padding: 16px; }
+  .modal.on { display: flex; }
+  .mbox { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; width: min(440px, 100%); max-height: 90vh;
+          overflow: auto; padding: 22px; }
+  .mbox h3 { margin: 0; display: flex; justify-content: space-between; align-items: center; font-size: 18px; }
+  .mbox h3 button { background: none; border: 0; color: var(--muted); font-size: 24px; cursor: pointer; }
+  .bal { font-size: 44px; font-weight: 900; margin: 10px 0 2px; display: flex; align-items: center; gap: 10px; }
+  .bal .coin { width: 34px; height: 34px; }
+  .bonusbtn { width: 100%; margin: 14px 0; background: var(--accent); color: #fff; border: 0; border-radius: 12px; padding: 12px;
+              font: inherit; font-weight: 800; cursor: pointer; }
+  .bonusbtn:disabled { background: #2a2f3a; color: var(--muted); cursor: default; }
+  .prices { display: grid; gap: 6px; font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+  .prices div { display: flex; justify-content: space-between; }
+  .prices b { color: var(--text); }
+  .clog div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .clog .p { color: var(--win); font-weight: 700; } .clog .m { color: var(--lose); font-weight: 700; }
+  .clog small { color: var(--muted); display: block; }
+  .gate { background: var(--panel); border: 1px dashed var(--line); border-radius: 14px; padding: 30px 16px; text-align: center; }
+  .gate p { color: var(--muted); margin: 0 0 14px; }
+  .price-note { color: var(--muted); font-size: 13px; margin-top: 8px; }
   .loginerr { background: rgba(224,71,76,.12); color: var(--lose); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
   #home { padding-top: 8px; }
   .wrap { padding-top: 22px; }
@@ -413,11 +439,16 @@
     <div id="mystats"></div>
 
     <h2 id="upload">Загрузить демку</h2>
+    <div class="gate" id="gate" hidden>
+      <p>Войдите через Steam, чтобы разбирать демки и видеть свои матчи.<br>При регистрации — <b>20 монет</b> в подарок.</p>
+      <a class="steambtn" href="/auth/steam">Войти через Steam</a>
+    </div>
     <label class="drop" id="drop">
       <input type="file" id="file" accept=".dem,.gz,.zst">
       <div><b>Выберите файл</b> или перетащите его сюда</div>
       <small>.dem, .dem.gz или .dem.zst — демку можно скачать в комнате матча на FACEIT кнопкой «Watch demo»</small>
     </label>
+    <div class="price-note" id="priceNote">Разбор новой демки — 2 <span class="coin"></span>. Уже разобранные матчи открываются бесплатно.</div>
     <div class="status" id="status"></div>
     <div class="bar" id="bar"><div></div></div>
   </section>
@@ -511,6 +542,13 @@
   </section>
 </div>
 
+<div class="modal" id="coinModal">
+  <div class="mbox">
+    <h3><span>Монеты</span><button id="coinClose" title="Закрыть">×</button></h3>
+    <div id="coinBody"></div>
+  </div>
+</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const drop = $("drop"), fileInput = $("file"), statusEl = $("status"), bar = $("bar");
@@ -564,7 +602,7 @@ let USER = null;
 async function loadUser() {
   try {
     const me = await (await fetch("/api/me")).json();
-    if (!me.logged_in) return;
+    if (!me.logged_in) { showGuestGate(); return; }
     USER = me;
     const f = me.faceit;
     $("guestBar").hidden = true;
@@ -574,7 +612,10 @@ async function loadUser() {
       (me.avatar ? `<img src="${esc(me.avatar)}" alt="">` : `<img alt="">`) +
       `<div class="ut"><div class="un">${esc(me.name)}</div>` +
       `<div class="ue">${f ? `FACEIT ${f.level ?? "-"} ур. · <b>${f.elo ?? "-"}</b> ELO` : "FACEIT не найден"}</div></div>` +
+      `<button class="coinbtn" id="coinBtn" title="Монеты"><span class="coin"></span><span id="coinCount">${me.coins}</span>` +
+      `${me.bonus_ready ? `<span class="dot" id="coinDot"></span>` : ""}</button>` +
       `<a class="out" href="/auth/logout">Выйти</a>`;
+    $("coinBtn").addEventListener("click", openCoins);
     // Ник FACEIT становится «моим» автоматически, а профиль сразу показываем в поиске
     if (f?.nickname) {
       if (!isMe(f.nickname)) setMe(f.nickname);
@@ -586,6 +627,63 @@ async function loadUser() {
 if (new URLSearchParams(location.search).get("login") === "error") {
   $("home").insertAdjacentHTML("afterbegin", `<div class="loginerr">Не получилось войти через Steam — попробуйте ещё раз.</div>`);
   history.replaceState({}, "", "/app");
+}
+
+// ---------- Монеты ----------
+function setCoins(c) {
+  if (!USER) return;
+  USER.coins = c.coins;
+  $("coinCount").textContent = c.coins;
+  if (!c.bonus_ready) $("coinDot")?.remove();
+}
+
+async function refreshCoins() {
+  if (!USER) return;
+  try { setCoins(await (await fetch("/api/coins")).json()); } catch { /* ничего */ }
+}
+
+async function openCoins() {
+  $("coinModal").classList.add("on");
+  $("coinBody").innerHTML = `<div class="note">Загружаем...</div>`;
+  try {
+    renderCoins(await (await fetch("/api/coins")).json());
+  } catch {
+    $("coinBody").innerHTML = `<div class="status err">Не удалось загрузить баланс</div>`;
+  }
+}
+
+function renderCoins(c) {
+  setCoins(c);
+  const when = (ts) => new Date(ts * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  $("coinBody").innerHTML =
+    `<div class="bal"><span class="coin"></span>${c.coins}</div>` +
+    `<button class="bonusbtn" id="bonusBtn" ${c.bonus_ready ? "" : "disabled"}>` +
+    (c.bonus_ready ? `Забрать ежедневный бонус +${c.daily_bonus}` : "Бонус уже получен — приходите завтра") + `</button>` +
+    `<div class="prices">` +
+    `<div>Разбор новой демки <b>${c.analysis_price} 🪙</b></div>` +
+    `<div>Открыть уже разобранный матч <b>бесплатно</b></div>` +
+    `<div>Ежедневный бонус <b>+${c.daily_bonus} 🪙</b></div>` +
+    `<div>Подарок при регистрации <b>+${c.start_coins} 🪙</b></div></div>` +
+    `<div class="clog"><div style="border:0;color:var(--muted)">История</div>` +
+    c.log.map((l) => `<div><span>${esc(l.reason)}<small>${when(l.ts)}</small></span>` +
+      `<span class="${l.delta > 0 ? "p" : "m"}">${l.delta > 0 ? "+" : ""}${l.delta}</span></div>`).join("") + `</div>`;
+  $("bonusBtn").addEventListener("click", async () => {
+    $("bonusBtn").disabled = true;
+    const res = await fetch("/api/coins/bonus", { method: "POST" });
+    const data = await res.json();
+    if (res.ok) renderCoins(data);
+    else $("bonusBtn").textContent = data.detail || "Ошибка";
+  });
+}
+
+$("coinClose").addEventListener("click", () => $("coinModal").classList.remove("on"));
+$("coinModal").addEventListener("click", (e) => { if (e.target === $("coinModal")) $("coinModal").classList.remove("on"); });
+
+// Гость: вместо загрузки — приглашение войти
+function showGuestGate() {
+  $("gate").hidden = false;
+  $("drop").style.display = "none";
+  $("priceNote").style.display = "none";
 }
 
 // ---------- Вкладки страницы матча ----------
@@ -657,7 +755,9 @@ async function loadHistory() {
     renderMyStats(list);
     if (LAST_PLAYER) renderPlayer(LAST_PLAYER);   // обновить пометки «Разобран» в списке FACEIT
     if (!list.length) {
-      $("history").innerHTML = `<div class="note">Пока пусто — загрузите первую демку ниже.</div>`;
+      $("history").innerHTML = USER
+        ? `<div class="note">Пока пусто — загрузите первую демку ниже.</div>`
+        : `<div class="note">Войдите через Steam — здесь появятся ваши матчи.</div>`;
       return;
     }
     $("history").innerHTML = list.map((m) => {
@@ -686,6 +786,10 @@ async function loadHistory() {
 // ---------- Моя статистика по всем матчам ----------
 function renderMyStats(list) {
   const box = $("mystats");
+  if (!USER) {
+    box.innerHTML = `<div class="note">Войдите через Steam — здесь появится ваша статистика по всем матчам.</div>`;
+    return;
+  }
   if (!ME) {
     box.innerHTML = `<div class="note">Укажите «Мой ник» вверху — здесь появится ваша статистика по всем разобранным матчам.</div>`;
     return;
@@ -950,6 +1054,7 @@ async function upload(file, faceitId = null) {
     setStatus("Готово!");
     showMatch(data, true);
     loadHistory();
+    refreshCoins();
   } catch (err) {
     bar.style.display = "none";
     setStatus(err.message, true);
@@ -1867,8 +1972,7 @@ $("play").addEventListener("click", () => (R.playing ? stop() : play()));
 $("seek").addEventListener("input", (e) => { R.pos = Number(e.target.value); draw(); });
 
 // ---------- При открытии страницы ----------
-loadHistory();
-loadUser();
+loadUser().finally(loadHistory);
 {
   const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
   if (m) openMatch(m[1], false);

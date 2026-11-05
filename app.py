@@ -6,6 +6,9 @@ import gzip
 import hashlib
 import hmac
 import secrets
+import sqlite3
+from contextlib import closing
+from datetime import date
 import json
 import os
 import re
@@ -62,6 +65,77 @@ def session_secret() -> bytes:
 
 
 SECRET = session_secret()
+
+# ---------------- Пользователи и монеты ----------------
+# Цены и бонусы — меняйте здесь
+START_COINS = 20        # подарок при первом входе
+DAILY_BONUS = 3         # ежедневный бонус
+ANALYSIS_PRICE = 2      # разбор новой демки (повторное открытие бесплатно)
+
+DB_PATH = BASE / "nuga.db"     # файл базы SQLite — в .gitignore, там данные пользователей
+
+
+def db() -> sqlite3.Connection:
+    con = sqlite3.connect(DB_PATH, timeout=10)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+with closing(db()) as _con, _con:
+    _con.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            steam_id   TEXT PRIMARY KEY,
+            name       TEXT,
+            faceit     TEXT,
+            coins      INTEGER NOT NULL,
+            created    INTEGER NOT NULL,
+            last_bonus TEXT
+        );
+        CREATE TABLE IF NOT EXISTS coin_log (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            steam_id TEXT NOT NULL,
+            delta    INTEGER NOT NULL,
+            reason   TEXT NOT NULL,
+            ts       INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS user_matches (
+            steam_id TEXT NOT NULL,
+            match_id TEXT NOT NULL,
+            added    INTEGER NOT NULL,
+            PRIMARY KEY (steam_id, match_id)
+        );
+    """)
+
+
+def get_user(steam_id: str) -> dict:
+    """Пользователь из базы. При первом входе создаём его и дарим стартовые монеты."""
+    with closing(db()) as con, con:
+        row = con.execute("SELECT * FROM users WHERE steam_id = ?", (steam_id,)).fetchone()
+        if row is None:
+            now = int(time.time())
+            con.execute("INSERT INTO users (steam_id, coins, created) VALUES (?, ?, ?)", (steam_id, START_COINS, now))
+            con.execute("INSERT INTO coin_log (steam_id, delta, reason, ts) VALUES (?, ?, ?, ?)",
+                        (steam_id, START_COINS, "Подарок за регистрацию", now))
+            row = con.execute("SELECT * FROM users WHERE steam_id = ?", (steam_id,)).fetchone()
+        return dict(row)
+
+
+def change_coins(steam_id: str, delta: int, reason: str) -> bool:
+    """Начислить (+) или списать (−) монеты. Списание не уводит баланс в минус — тогда вернём False."""
+    with closing(db()) as con, con:
+        cur = con.execute("UPDATE users SET coins = coins + ? WHERE steam_id = ? AND coins + ? >= 0",
+                          (delta, steam_id, delta))
+        if cur.rowcount != 1:
+            return False
+        con.execute("INSERT INTO coin_log (steam_id, delta, reason, ts) VALUES (?, ?, ?, ?)",
+                    (steam_id, delta, reason, int(time.time())))
+        return True
+
+
+def add_user_match(steam_id: str, match_id: str) -> None:
+    with closing(db()) as con, con:
+        con.execute("INSERT OR IGNORE INTO user_matches (steam_id, match_id, added) VALUES (?, ?, ?)",
+                    (steam_id, match_id, int(time.time())))
 
 app = FastAPI(title="Nuga CS Demo")
 
@@ -167,18 +241,24 @@ def saved_match_response(mid: str) -> Response:
                     headers={"Content-Encoding": "gzip"})
 
 
-def run_analysis(raw: Path, faceit_id: str | None = None):
-    """Если такую демку уже разбирали — сразу отдаём сохранённое. Иначе разбираем, сохраняем и удаляем демку."""
+def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
+    """Если такую демку уже разбирали — сразу отдаём сохранённое (бесплатно).
+    Иначе проверяем монеты, разбираем, сохраняем, списываем монеты и удаляем демку."""
     dem = None
     try:
         mid = file_id(raw)
         if (MATCHES / f"{mid}.json.gz").exists():
             link_faceit(mid, faceit_id)
+            add_user_match(steam_id, mid)
             return saved_match_response(mid)
+        if get_user(steam_id)["coins"] < ANALYSIS_PRICE:
+            raise HTTPException(402, f"Не хватает монет: разбор стоит {ANALYSIS_PRICE}. Заберите ежедневный бонус!")
         dem = prepare_demo(raw)
         data = analyze_demo(dem)
         data["id"] = mid
         save_match(mid, data, faceit_id)
+        change_coins(steam_id, -ANALYSIS_PRICE, f"Разбор матча {data.get('map', '')}")
+        add_user_match(steam_id, mid)
         return saved_match_response(mid)
     except HTTPException:
         raise
@@ -217,22 +297,40 @@ def upgrade_meta(meta: dict) -> dict:
 
 
 @app.get("/api/matches")
-def list_matches():
-    """Все сохранённые матчи, новые сверху."""
+def list_matches(request: Request):
+    """Мои матчи, новые сверху: которые я загрузил и в которых я играл (по нику FACEIT)."""
+    steam_id = read_session(request)
+    if not steam_id:
+        return []
+    user = get_user(steam_id)
+    with closing(db()) as con:
+        mine = {r["match_id"] for r in con.execute("SELECT match_id FROM user_matches WHERE steam_id = ?", (steam_id,))}
+    nick = (user.get("faceit") or "").lower()
+
     metas = []
     for path in MATCHES.glob("*.meta.json"):
         try:
             meta = json.loads(path.read_text(encoding="utf-8"))
             if "stats" not in meta:
                 meta = upgrade_meta(meta)
-            metas.append(meta)
+            played = bool(nick) and any(str(p.get("name", "")).lower() == nick for p in meta.get("stats", []))
+            if meta["id"] in mine or played:
+                metas.append(meta)
         except (OSError, ValueError):
             continue
     return sorted(metas, key=lambda m: m.get("created", 0), reverse=True)[:200]
 
 
+def require_login(request: Request) -> str:
+    steam_id = read_session(request)
+    if not steam_id:
+        raise HTTPException(401, "Войдите через Steam, чтобы разбирать демки")
+    return steam_id
+
+
 @app.post("/api/chunk")
 def upload_chunk(
+    request: Request,
     upload_id: str = Form(...),
     index: int = Form(...),
     total: int = Form(...),
@@ -243,6 +341,7 @@ def upload_chunk(
     """Загрузка демки по кусочкам: так файл проходит даже через сервисы с лимитом 100 МБ на запрос.
     Кусочки приходят по порядку, мы дописываем их в один файл, а после последнего — разбираем демку."""
     # Номер загрузки придумывает браузер — проверяем, что там только буквы и цифры (защита от путей вроде ../)
+    steam_id = require_login(request)
     if not re.fullmatch(r"[a-f0-9]{32}", upload_id):
         raise HTTPException(400, "Неверный номер загрузки")
     suffix = next((x for x in ALLOWED if filename.lower().endswith(x)), None)
@@ -253,6 +352,9 @@ def upload_chunk(
 
     part = UPLOADS / f"{upload_id}.part"
     if index == 0:
+        # Предупреждаем сразу, а не после загрузки 200 МБ
+        if get_user(steam_id)["coins"] < ANALYSIS_PRICE:
+            raise HTTPException(402, f"Не хватает монет: разбор стоит {ANALYSIS_PRICE}. Заберите ежедневный бонус!")
         part.unlink(missing_ok=True)
     elif not part.exists():
         raise HTTPException(400, "Загрузка не найдена — начните заново")
@@ -268,12 +370,13 @@ def upload_chunk(
 
     raw = UPLOADS / f"{upload_id}{suffix}"
     part.rename(raw)
-    return run_analysis(raw, faceit_id_from(filename, faceit_id))
+    return run_analysis(raw, steam_id, faceit_id_from(filename, faceit_id))
 
 
 @app.post("/api/analyze")
-def analyze(file: UploadFile = File(...)):
+def analyze(request: Request, file: UploadFile = File(...)):
     """Принимает демку, разбирает её и возвращает статистику в JSON."""
+    steam_id = require_login(request)
     name = (file.filename or "").lower()
     suffix = next((s for s in ALLOWED if name.endswith(s)), None)
     if suffix is None:
@@ -284,7 +387,7 @@ def analyze(file: UploadFile = File(...)):
     with raw.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    return run_analysis(raw, faceit_id_from(file.filename or ""))
+    return run_analysis(raw, steam_id, faceit_id_from(file.filename or ""))
 
 
 # ---------------- FACEIT ----------------
@@ -505,7 +608,7 @@ def me(request: Request):
 
     cached = PROFILE_CACHE.get(steam_id)
     if cached and cached[0] > time.time():
-        return cached[1]
+        return with_coins(cached[1])
 
     profile = {"logged_in": True, "steam_id": steam_id, "faceit": None}
     try:
@@ -524,4 +627,39 @@ def me(request: Request):
     profile["avatar"] = (profile["faceit"] or {}).get("avatar") or steam["avatar"]
 
     PROFILE_CACHE[steam_id] = (time.time() + 600, profile)
-    return profile
+    get_user(steam_id)
+    with closing(db()) as con, con:      # запоминаем имя и ник FACEIT — по нику находим «мои матчи»
+        con.execute("UPDATE users SET name = ?, faceit = ? WHERE steam_id = ?",
+                    (profile["name"], (profile["faceit"] or {}).get("nickname"), steam_id))
+    return with_coins(profile)
+
+
+def with_coins(profile: dict) -> dict:
+    user = get_user(profile["steam_id"])
+    return dict(profile, coins=user["coins"], bonus_ready=user["last_bonus"] != date.today().isoformat())
+
+
+@app.get("/api/coins")
+def coins(request: Request):
+    """Баланс, история и цены."""
+    steam_id = require_login(request)
+    user = get_user(steam_id)
+    with closing(db()) as con:
+        log = [dict(r) for r in con.execute(
+            "SELECT delta, reason, ts FROM coin_log WHERE steam_id = ? ORDER BY id DESC LIMIT 20", (steam_id,))]
+    return {"coins": user["coins"], "bonus_ready": user["last_bonus"] != date.today().isoformat(),
+            "daily_bonus": DAILY_BONUS, "analysis_price": ANALYSIS_PRICE, "start_coins": START_COINS, "log": log}
+
+
+@app.post("/api/coins/bonus")
+def daily_bonus(request: Request):
+    """Ежедневный бонус — раз в календарный день."""
+    steam_id = require_login(request)
+    today = date.today().isoformat()
+    with closing(db()) as con, con:
+        cur = con.execute("UPDATE users SET last_bonus = ? WHERE steam_id = ? AND (last_bonus IS NULL OR last_bonus != ?)",
+                          (today, steam_id, today))
+        if cur.rowcount != 1:
+            raise HTTPException(409, "Бонус сегодня уже получен — приходите завтра")
+    change_coins(steam_id, DAILY_BONUS, "Ежедневный бонус")
+    return coins(request)
