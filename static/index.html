@@ -309,6 +309,159 @@
     .pcard img { width: 44px; height: 44px; }
   }
 
+  /* ---------- Боковое меню и страницы ---------- */
+  .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); max-width: 1440px; margin: 0 auto; }
+  .sidenav { position: sticky; top: 60px; height: calc(100vh - 60px); padding: 18px 12px; display: flex; flex-direction: column;
+             gap: 2px; overflow-y: auto; border-right: 1px solid rgba(255,255,255,.05); }
+  .sidenav a { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 12px; color: #c9ccd3;
+               text-decoration: none; font-weight: 600; font-size: 15px; transition: .12s; }
+  .sidenav a:hover { background: #16181e; color: #fff; }
+  .sidenav a.on { background: linear-gradient(90deg, rgba(255,90,31,.24), rgba(255,90,31,.06)); color: var(--accent); }
+  .sidenav .ni { width: 22px; text-align: center; font-size: 15px; opacity: .85; }
+  .nsep { margin: 14px 14px 6px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .nfoot { margin-top: auto; color: #565b66; font-size: 11px; padding: 12px 14px 0; }
+  .layout .wrap { max-width: none; margin: 0; padding: 26px 28px 60px; min-width: 0; }
+  .view { display: none; } .view.on { display: block; }
+  .topbar .topin { max-width: 1440px; padding: 0 24px; }
+
+  .phead { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .phead h1 { font-size: 34px; margin: 0; letter-spacing: -.03em; }
+  .psub { color: var(--muted); margin-top: 2px; }
+  .pact { display: flex; gap: 10px; flex-wrap: wrap; }
+  .pbtn { display: inline-flex; align-items: center; gap: 8px; background: #1b1e26; border: 1px solid var(--line); color: var(--text);
+          border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; }
+  .pbtn:hover { border-color: #3a3f4b; }
+  .pbtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 6px 24px rgba(255,90,31,.25); }
+  .pbtn:disabled { opacity: .6; cursor: wait; }
+
+  .segtabs { display: flex; background: #15171d; border: 1px solid var(--line); border-radius: 18px; padding: 5px; gap: 5px; margin-bottom: 12px; }
+  .segtabs button { flex: 1; background: none; border: 0; color: var(--muted); font: inherit; font-weight: 700; padding: 11px 8px;
+                    border-radius: 14px; cursor: pointer; white-space: nowrap; }
+  .segtabs button:hover { color: var(--text); }
+  .segtabs button.on { background: #2a2d36; color: #fff; }
+  .segtabs .cnt { display: inline-block; background: rgba(255,255,255,.08); border-radius: 999px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
+  .segtabs button.on .cnt { background: #fff; color: #111; }
+  .segtabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+  .dot.g { background: var(--win); } .dot.o { background: var(--accent); }
+
+  .filters { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+  .fsel { display: flex; align-items: center; gap: 8px; background: #15171d; border: 1px solid var(--line); border-radius: 999px;
+          padding: 6px 10px 6px 16px; color: var(--muted); font-size: 14px; }
+  .fsel select { background: transparent; border: 0; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; outline: none; }
+  .fsel option { background: #15171d; }
+
+  .mtable { background: #15171d; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
+  .mth, .mtr { display: grid; grid-template-columns: minmax(230px, 2.3fr) 1.1fr .8fr 1fr 1fr minmax(170px, 1.4fr);
+               align-items: center; gap: 12px; padding: 0 20px; }
+  .mth { height: 50px; color: var(--muted); font-size: 13px; font-weight: 600; background: #1b1e26; }
+  .mth span:not(:first-child) { text-align: center; } .mth span:last-child { text-align: right; }
+  .mgroup { padding: 14px 20px 8px; font-weight: 700; font-size: 14px; border-top: 1px solid var(--line); }
+  .mgroup small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .mtr { min-height: 74px; border-top: 1px solid var(--line); transition: background-color .12s; }
+  .mtr.win { background-image: linear-gradient(90deg, rgba(47,179,107,.11), transparent 42%); }
+  .mtr.lose { background-image: linear-gradient(90deg, rgba(224,71,76,.11), transparent 42%); }
+  .mtr.done { cursor: pointer; } .mtr.done:hover { background-color: #1c1f27; }
+  .mmap { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .micon { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-weight: 900;
+           font-size: 13px; color: #111; letter-spacing: .02em; }
+  .mname { font-weight: 700; white-space: nowrap; } .mname .s { margin-left: 8px; font-weight: 800; }
+  .s.w, .mscore.w { color: var(--win); } .s.l, .mscore.l { color: var(--lose); }
+  .mmeta { color: var(--muted); font-size: 12px; margin-top: 3px; white-space: nowrap; }
+  .mtag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 7px; margin-right: 6px;
+          background: rgba(255,90,31,.15); color: var(--accent); }
+  .mtag.up { background: rgba(91,157,255,.15); color: var(--ct); }
+  .mtime { color: var(--muted); font-size: 13px; text-align: center; }
+  .mscore { font-size: 22px; font-weight: 900; text-align: center; font-variant-numeric: tabular-nums; }
+  .mscore span { margin: 0 2px; opacity: .6; }
+  .mkda { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; } .mkda span { color: var(--muted); font-weight: 400; }
+  .mrat { text-align: center; } .mrat b { font-size: 16px; }
+  .mrat .rb { height: 4px; width: 84px; margin: 5px auto 0; background: #2a2d36; border-radius: 2px; overflow: hidden; }
+  .mrat .rb i { display: block; height: 100%; border-radius: 2px; }
+  .mrat .none { color: #565b66; }
+  .mact { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+  .abtn { border: 0; border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+          white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .abtn.imp { background: rgba(255,90,31,.15); color: var(--accent); } .abtn.imp:hover { background: rgba(255,90,31,.25); }
+  .abtn.ghost { background: #262a33; color: var(--text); } .abtn.ghost:hover { background: #303540; }
+  .hlchip { border: 1px solid rgba(255,90,31,.5); color: var(--accent); border-radius: 8px; padding: 3px 9px; font-size: 13px; font-weight: 700; }
+  .chev { color: var(--muted); font-size: 22px; line-height: 1; }
+  .mempty { padding: 44px 20px; text-align: center; color: var(--muted); }
+
+  /* Рекорды */
+  .recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .rec { position: relative; overflow: hidden; min-height: 168px; background: #15171d; border: 1px solid var(--line); border-radius: 20px;
+         padding: 18px 20px; cursor: pointer; text-align: left; color: var(--text); font: inherit; display: flex; flex-direction: column;
+         transition: .15s; }
+  .rec:hover { border-color: #3a3f4b; transform: translateY(-2px); }
+  .rec .bg { position: absolute; right: -30px; top: 50%; width: 190px; height: 190px; transform: translateY(-50%); opacity: .22;
+             background-position: center; background-size: contain; background-repeat: no-repeat; pointer-events: none; }
+  .rec .bg.txt { display: grid; place-items: center; font-size: 72px; font-weight: 900; color: var(--c); opacity: .14; }
+  .rec .lb { color: var(--muted); font-size: 14px; position: relative; }
+  .rec .vl { font-size: 42px; font-weight: 900; letter-spacing: -.03em; line-height: 1.15; position: relative; }
+  .rec .ft { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; position: relative; }
+  .rec .mp { font-weight: 700; } .rec .dt { color: var(--muted); font-size: 13px; }
+  .rec .sc { font-weight: 800; font-size: 14px; }
+  .rec.empty { cursor: default; } .rec.empty:hover { transform: none; border-color: var(--line); }
+  .rec.empty .vl { color: #565b66; }
+
+  /* Сравнение */
+  .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px; align-items: center; margin-bottom: 28px; }
+  .vsp { text-align: center; }
+  .vsp .av { width: 132px; height: 132px; border-radius: 26px; object-fit: cover; background: #1b1e26; display: block; margin: 0 auto 12px;
+             border: 2px solid var(--c); box-shadow: 0 0 34px color-mix(in srgb, var(--c) 45%, transparent); }
+  .vsp .nm { font-size: 22px; font-weight: 800; color: var(--c); }
+  .vsp .mt { color: var(--muted); font-size: 13px; margin: 2px 0 8px; }
+  .vsp .tags { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .vsp .tags span { background: #1b1e26; border-radius: 999px; padding: 3px 10px; font-size: 13px; font-weight: 700; }
+  .vsp .lead { margin-top: 10px; font-weight: 800; color: var(--c); }
+  .vsp .chg { margin-top: 10px; }
+  .vsmid { color: var(--muted); font-weight: 900; font-size: 28px; }
+  .pickbtn { width: 132px; height: 132px; border-radius: 50%; border: 2px dashed #3a3f4b; background: #15171d; color: var(--accent);
+             font-size: 54px; cursor: pointer; display: grid; place-items: center; margin: 0 auto 12px; }
+  .pickbtn:hover { border-color: var(--accent); }
+  .cgroup { font-size: 20px; font-weight: 800; margin: 26px 0 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .crow { display: grid; grid-template-columns: 26px 70px 1fr 70px 26px; gap: 12px; align-items: center; padding: 12px 0 4px; }
+  .crow .lbl { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 14px; margin-bottom: -4px; }
+  .crow .v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .crow .v.l { text-align: right; color: #5bb8ff; } .crow .v.r { color: #ff5d73; }
+  .crow .v.dim { opacity: .5; }
+  .crow .line { position: relative; height: 3px; border-radius: 2px; background: linear-gradient(90deg, #5bb8ff var(--p), #ff5d73 var(--p)); }
+  .crow .line::after { content: ""; position: absolute; left: var(--p); top: -5px; width: 2px; height: 13px; background: #fff; opacity: .7; }
+  .crow .cr { text-align: center; font-size: 18px; }
+  .pickrow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+  .pickrow span { flex: 1; font-weight: 600; }
+  .pickrow button { background: none; border: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+  @media (max-width: 760px) {
+    .vs { grid-template-columns: 1fr 1fr; } .vsmid { display: none; }
+    .vsp .av, .pickbtn { width: 96px; height: 96px; } .vsp .nm { font-size: 17px; }
+    .crow { grid-template-columns: 18px 56px 1fr 56px 18px; gap: 8px; } .crow .v { font-size: 18px; }
+  }
+
+  .faq details { background: #15171d; border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin-bottom: 8px; }
+  .faq summary { font-weight: 700; cursor: pointer; }
+  .faq p { color: var(--muted); margin: 10px 0 0; }
+
+  @media (max-width: 1000px) {
+    .mth { display: none; }
+    .mtr { grid-template-columns: minmax(0, 1fr) auto; padding: 10px 14px; }
+    .mtr .mtime, .mtr .mscore, .mtr .mkda, .mtr .mrat { display: none; }
+    .mact .ghost { display: none; }
+  }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidenav { position: sticky; top: 56px; z-index: 18; height: auto; flex-direction: row; overflow-x: auto; padding: 8px 10px;
+               border-right: 0; border-bottom: 1px solid rgba(255,255,255,.05); background: rgba(11,12,16,.92); backdrop-filter: blur(10px);
+               scrollbar-width: none; }
+    .sidenav::-webkit-scrollbar { display: none; }
+    .sidenav a { padding: 8px 12px; white-space: nowrap; font-size: 14px; }
+    .nsep, .nfoot { display: none; }
+    .layout .wrap { padding: 18px 12px 48px; }
+    .phead h1 { font-size: 26px; }
+    .segtabs button { font-size: 13px; padding: 9px 4px; }
+    .segtabs .dot { display: none; }
+    .tabs { top: 108px; }
+  }
+
   /* ---------- Каркас приложения ---------- */
   body { background: #0b0c10; }
   .topbar { position: sticky; top: 0; z-index: 20; background: rgba(11,12,16,.85); backdrop-filter: blur(10px);
@@ -339,8 +492,8 @@
              border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 800; font-size: 14px; cursor: pointer; position: relative; }
   .coinbtn:hover { background: rgba(232,197,71,.2); }
   .coinbtn .dot { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--lose); }
-  .coin { display: inline-block; width: 16px; height: 16px; border-radius: 50%; vertical-align: -2px;
-          background: radial-gradient(circle at 35% 35%, #ffe58a, #e8b020 60%, #b8860b); box-shadow: inset 0 -1px 0 rgba(0,0,0,.25); }
+  .coin { display: inline-block; width: 18px; height: 18px; vertical-align: -4px;
+          background: url("/static/coin.png?v=2") center / contain no-repeat; }
   .modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; padding: 16px; }
   .modal.on { display: flex; }
   .mbox { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; width: min(440px, 100%); max-height: 90vh;
@@ -348,7 +501,7 @@
   .mbox h3 { margin: 0; display: flex; justify-content: space-between; align-items: center; font-size: 18px; }
   .mbox h3 button { background: none; border: 0; color: var(--muted); font-size: 24px; cursor: pointer; }
   .bal { font-size: 44px; font-weight: 900; margin: 10px 0 2px; display: flex; align-items: center; gap: 10px; }
-  .bal .coin { width: 34px; height: 34px; }
+  .bal .coin { width: 44px; height: 44px; }
   .bonusbtn { width: 100%; margin: 14px 0; background: var(--accent); color: #fff; border: 0; border-radius: 12px; padding: 12px;
               font: inherit; font-weight: 800; cursor: pointer; }
   .bonusbtn:disabled { background: #2a2f3a; color: var(--muted); cursor: default; }
@@ -407,10 +560,6 @@
 <header class="topbar">
   <div class="topin">
     <a class="logo" href="/"><i>N</i><b>Nuga <span>CS</span> Demo</b></a>
-    <nav class="tnav">
-      <a href="/app" id="navHome">Матчи</a>
-      <a href="/app#upload" id="navUpload">Загрузить</a>
-    </nav>
     <div class="mebar" id="guestBar">
       <span class="mel">Мой ник</span>
       <input id="meInput" placeholder="например Nuga_006" autocomplete="off">
@@ -421,37 +570,111 @@
   </div>
 </header>
 
-<div class="wrap">
-  <!-- ===== Главный экран приложения ===== -->
-  <section id="home">
-    <h2 class="first">Игрок FACEIT</h2>
-    <form class="search" id="search">
-      <input id="nick" placeholder="Введите ник на FACEIT, например Nuga_006" autocomplete="off">
-      <button type="submit">Найти</button>
-    </form>
-    <div id="player"></div>
+<div class="layout">
+  <!-- ===== Боковое меню ===== -->
+  <aside class="sidenav" id="sidenav">
+    <a href="/app" data-view="matches"><span class="ni">▦</span>Матчи</a>
+    <a href="/app/stats" data-view="stats"><span class="ni">▮▮</span>Статистика</a>
+    <a href="/app/records" data-view="records"><span class="ni">🏆</span>Рекорды</a>
+    <a href="/app/upload" data-view="upload"><span class="ni">⇪</span>Загрузить демо</a>
+    <div class="nsep">Исследовать</div>
+    <a href="/app/compare" data-view="compare"><span class="ni">⚔</span>Сравнение</a>
+    <a href="/app/search" data-view="search"><span class="ni">⌕</span>Поиск игрока</a>
+    <a href="/app/faq" data-view="faq"><span class="ni">?</span>FAQ</a>
+    <div class="nfoot">Nuga CS Demo · не связан с Valve и FACEIT</div>
+  </aside>
+
+  <main class="wrap">
+  <div id="home">
+    <!-- Матчи -->
+    <section class="view" data-view="matches">
+      <div class="phead">
+        <div><h1>Матчи</h1><div class="psub" id="mSub"></div></div>
+        <div class="pact">
+          <button class="pbtn" id="syncBtn" title="Обновить список с FACEIT">⟳ Обновить</button>
+          <a class="pbtn primary" href="/app/upload" data-view="upload">⇪ Загрузить демо</a>
+        </div>
+      </div>
+      <div class="segtabs" id="mTabs">
+        <button data-f="all" class="on">Все <span class="cnt" id="cAll">0</span></button>
+        <button data-f="done"><i class="dot g"></i>Разобранные <span class="cnt" id="cDone">0</span></button>
+        <button data-f="todo"><i class="dot o"></i>Неразобранные <span class="cnt" id="cTodo">0</span></button>
+      </div>
+      <div class="filters">
+        <label class="fsel"><span>Карта</span><select id="fMap"><option value="">Все карты</option></select></label>
+        <label class="fsel"><span>Сортировка</span><select id="fSort">
+          <option value="new">Сначала новые</option>
+          <option value="old">Сначала старые</option>
+          <option value="rating">По рейтингу</option>
+        </select></label>
+      </div>
+      <div class="mtable" id="mTable"></div>
+    </section>
+
+    <!-- Статистика -->
+    <section class="view" data-view="stats">
+      <div class="phead"><div><h1>Статистика</h1><div class="psub">По всем разобранным матчам, где вы играли</div></div></div>
+      <div id="mystats"></div>
+    </section>
+
+    <!-- Рекорды -->
+    <section class="view" data-view="records">
+      <div class="phead"><div><h1>Рекорды</h1>
+        <div class="psub">Личные рекорды по всем разобранным матчам. Нажмите на карточку, чтобы открыть матч.</div>
+        <div class="psub" id="recSub"></div></div></div>
+      <div class="recs" id="recs"></div>
+    </section>
+
+    <!-- Сравнение -->
+    <section class="view" data-view="compare">
+      <div class="phead"><div><h1>Сравнение</h1><div class="psub">Вы против другого игрока — по последним 20 матчам FACEIT</div></div>
+        <div class="pact"><button class="pbtn" id="cmpRefresh">⟳ Обновить</button></div></div>
+      <div class="vs" id="vs"></div>
+      <div id="cmpBars"></div>
+    </section>
+
+    <!-- Загрузка -->
+    <section class="view" data-view="upload">
+      <div class="phead"><div><h1>Загрузить демо</h1><div class="psub">Демку можно скачать в комнате матча на FACEIT кнопкой «Watch demo»</div></div></div>
+      <div class="gate" id="gate" hidden>
+        <p>Войдите через Steam, чтобы разбирать демки и видеть свои матчи.<br>При регистрации — <b>20 монет</b> в подарок.</p>
+        <a class="steambtn" href="/auth/steam">Войти через Steam</a>
+      </div>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".dem,.gz,.zst">
+        <div><b>Выберите файл</b> или перетащите его сюда</div>
+        <small>.dem, .dem.gz или .dem.zst · до 700 МБ</small>
+      </label>
+      <div class="price-note" id="priceNote">Разбор новой демки — 2 <span class="coin"></span>. Уже разобранные матчи открываются бесплатно.</div>
+      <div class="status" id="status"></div>
+      <div class="bar" id="bar"><div></div></div>
+    </section>
+
+    <!-- Поиск игрока -->
+    <section class="view" data-view="search">
+      <div class="phead"><div><h1>Поиск игрока</h1><div class="psub">Профиль и последние матчи любого игрока FACEIT</div></div></div>
+      <form class="search" id="search">
+        <input id="nick" placeholder="Введите ник на FACEIT" autocomplete="off">
+        <button type="submit">Найти</button>
+      </form>
+      <div id="player"></div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="view" data-view="faq">
+      <div class="phead"><div><h1>FAQ</h1><div class="psub">Частые вопросы</div></div></div>
+      <div class="faq">
+        <details open><summary>Где взять демку матча?</summary><p>Откройте матч на FACEIT (кнопка «Комната» в списке матчей), нажмите «Watch demo» — скачается файл <b>.dem.zst</b>. Его и загружайте, переименовывать не нужно.</p></details>
+        <details><summary>Сколько стоит разбор?</summary><p>Разбор новой демки — 2 монеты. При регистрации дарим 20 монет, каждый день можно забрать бонус +3. Матч, который уже кто-то разобрал, открывается бесплатно.</p></details>
+        <details><summary>Что значит Rating, KAST, FK–FD?</summary><p><b>Rating 1.0</b> — общая оценка игры по формуле HLTV, 1.00 — средний уровень. <b>KAST</b> — процент раундов, где вы убили, ассистнули, выжили или вас разменяли. <b>FK–FD</b> — первые убийства и первые смерти в раундах.</p></details>
+        <details><summary>Можно ли поделиться матчем?</summary><p>Да — на странице матча есть кнопка «Скопировать ссылку». Смотреть по ссылке можно без входа.</p></details>
+        <details><summary>Безопасен ли вход через Steam?</summary><p>Пароль вводится только на сайте Steam. Мы получаем лишь ваш Steam ID — по нему находим профиль FACEIT.</p></details>
+        <details><summary>Почему матч не открывается в CS2?</summary><p>CS2 открывает только демки текущей версии игры. После крупного обновления старые демки могут перестать запускаться.</p></details>
+      </div>
+    </section>
+
     <input type="file" id="rowFile" accept=".dem,.gz,.zst" hidden>
-
-    <h2>Мои матчи</h2>
-    <div class="hist" id="history"></div>
-
-    <h2>Моя статистика</h2>
-    <div id="mystats"></div>
-
-    <h2 id="upload">Загрузить демку</h2>
-    <div class="gate" id="gate" hidden>
-      <p>Войдите через Steam, чтобы разбирать демки и видеть свои матчи.<br>При регистрации — <b>20 монет</b> в подарок.</p>
-      <a class="steambtn" href="/auth/steam">Войти через Steam</a>
-    </div>
-    <label class="drop" id="drop">
-      <input type="file" id="file" accept=".dem,.gz,.zst">
-      <div><b>Выберите файл</b> или перетащите его сюда</div>
-      <small>.dem, .dem.gz или .dem.zst — демку можно скачать в комнате матча на FACEIT кнопкой «Watch demo»</small>
-    </label>
-    <div class="price-note" id="priceNote">Разбор новой демки — 2 <span class="coin"></span>. Уже разобранные матчи открываются бесплатно.</div>
-    <div class="status" id="status"></div>
-    <div class="bar" id="bar"><div></div></div>
-  </section>
+  </div>
 
   <!-- ===== Страница матча ===== -->
   <section class="result" id="result">
@@ -540,6 +763,19 @@
       </div>
     </div>
   </section>
+  </main>
+</div>
+
+<div class="modal" id="pickModal">
+  <div class="mbox">
+    <h3><span>Выберите соперника</span><button id="pickClose" title="Закрыть">×</button></h3>
+    <form id="pickForm" class="search" style="margin:12px 0">
+      <input id="pickInput" placeholder="Ник на FACEIT" autocomplete="off">
+      <button type="submit">Сравнить</button>
+    </form>
+    <div class="note" style="margin:0 0 6px">Игроки из ваших матчей</div>
+    <div id="pickList"></div>
+  </div>
 </div>
 
 <div class="modal" id="coinModal">
@@ -577,7 +813,7 @@ function setMe(name) {
   $("meInput").value = ME;
   updateMeNote();
   loadHistory();
-  if (R.data) render(R.data);       // перерисовать открытый матч с подсветкой
+  if (R.data && $("result").style.display === "block") render(R.data);   // перерисовать открытый матч
 }
 
 function updateMeNote() {
@@ -620,8 +856,8 @@ async function loadUser() {
     if (f?.nickname) {
       if (!isMe(f.nickname)) setMe(f.nickname);
       $("nick").value = f.nickname;
-      if (!$("player").innerHTML) $("search").requestSubmit();
     }
+    loadMyFaceit();
   } catch { /* сервер без входа — работаем как гость */ }
 }
 if (new URLSearchParams(location.search).get("login") === "error") {
@@ -660,10 +896,10 @@ function renderCoins(c) {
     `<button class="bonusbtn" id="bonusBtn" ${c.bonus_ready ? "" : "disabled"}>` +
     (c.bonus_ready ? `Забрать ежедневный бонус +${c.daily_bonus}` : "Бонус уже получен — приходите завтра") + `</button>` +
     `<div class="prices">` +
-    `<div>Разбор новой демки <b>${c.analysis_price} 🪙</b></div>` +
+    `<div>Разбор новой демки <b>${c.analysis_price} <span class="coin"></span></b></div>` +
     `<div>Открыть уже разобранный матч <b>бесплатно</b></div>` +
-    `<div>Ежедневный бонус <b>+${c.daily_bonus} 🪙</b></div>` +
-    `<div>Подарок при регистрации <b>+${c.start_coins} 🪙</b></div></div>` +
+    `<div>Ежедневный бонус <b>+${c.daily_bonus} <span class="coin"></span></b></div>` +
+    `<div>Подарок при регистрации <b>+${c.start_coins} <span class="coin"></span></b></div></div>` +
     `<div class="clog"><div style="border:0;color:var(--muted)">История</div>` +
     c.log.map((l) => `<div><span>${esc(l.reason)}<small>${when(l.ts)}</small></span>` +
       `<span class="${l.delta > 0 ? "p" : "m"}">${l.delta > 0 ? "+" : ""}${l.delta}</span></div>`).join("") + `</div>`;
@@ -701,24 +937,38 @@ document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("cli
   window.scrollTo({ top: $("tabs").offsetTop - 70, behavior: "smooth" });
 }));
 
-function showHome() {
+// ---------- Разделы приложения (боковое меню) ----------
+const VIEWS = ["matches", "stats", "records", "upload", "compare", "search", "faq"];
+const VIEW_TITLES = { matches: "Матчи", stats: "Статистика", records: "Рекорды", upload: "Загрузить демо",
+                      compare: "Сравнение", search: "Поиск игрока", faq: "FAQ" };
+let VIEW = "matches";
+
+function navOn(name) {
+  document.querySelectorAll("#sidenav a").forEach((a) => a.classList.toggle("on", a.dataset.view === name));
+}
+
+function showView(name, push = true) {
+  if (!VIEWS.includes(name)) name = "matches";
+  VIEW = name;
   stop();
   $("result").style.display = "none";
   $("home").style.display = "";
   $("cs2Panel").innerHTML = "";
-  document.title = "Nuga CS Demo";
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.dataset.view === name));
+  navOn(name);
+  if (push) history.pushState({}, "", name === "matches" ? "/app" : `/app/${name}`);
+  document.title = `${VIEW_TITLES[name]} — Nuga CS Demo`;
   window.scrollTo({ top: 0 });
+  if (name === "compare") initCompare();
 }
-$("back").addEventListener("click", (e) => {
+const showHome = () => showView("matches", false);
+const viewFromPath = () => (location.pathname.match(/^\/app\/([a-z]+)/) || [])[1] || "matches";
+
+document.querySelectorAll("a[data-view]").forEach((a) => a.addEventListener("click", (e) => {
   e.preventDefault();
-  history.pushState({}, "", "/app");
-  showHome();
-});
-$("navUpload").addEventListener("click", (e) => {
-  if ($("home").style.display === "none") { e.preventDefault(); history.pushState({}, "", "/app"); showHome(); }
-  setTimeout(() => $("upload").scrollIntoView({ behavior: "smooth" }), 50);
-});
-$("navHome").addEventListener("click", (e) => { e.preventDefault(); history.pushState({}, "", "/app"); showHome(); });
+  showView(a.dataset.view);
+}));
+$("back").addEventListener("click", (e) => { e.preventDefault(); showView("matches"); });
 
 // Шапка матча: карта, счёт с моей стороны и «Победа/Поражение»
 function renderHeader(data) {
@@ -754,34 +1004,321 @@ async function loadHistory() {
     MATCH_LIST = list;
     renderMyStats(list);
     if (LAST_PLAYER) renderPlayer(LAST_PLAYER);   // обновить пометки «Разобран» в списке FACEIT
-    if (!list.length) {
-      $("history").innerHTML = USER
-        ? `<div class="note">Пока пусто — загрузите первую демку ниже.</div>`
-        : `<div class="note">Войдите через Steam — здесь появятся ваши матчи.</div>`;
-      return;
-    }
-    $("history").innerHTML = list.map((m) => {
-      const date = new Date(m.created * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-      const names = (m.teams || []).map((t) => t.join(", ")).join(" vs ");
-      // Если я играл в этом матче — счёт с моей стороны и цвет победы/поражения
-      const myTeam = (m.teams || []).findIndex((t) => t.some(isMe));
-      let score = `${m.score[0]} : ${m.score[1]}`, cls = "";
-      if (myTeam >= 0) {
-        const mine = m.score[myTeam], theirs = m.score[1 - myTeam];
-        score = `${mine} : ${theirs}`;
-        cls = mine > theirs ? " win" : mine < theirs ? " lose" : "";
-      }
-      return `<button class="mcard${cls}" data-id="${esc(m.id)}" title="${esc(names)}">` +
-        `<div class="top"><span class="mp">${esc(mapTitle(m.map))}</span><span class="sc">${score}</span></div>` +
-        `<div class="sub">${date}${m.highlights ? ` · ${m.highlights} хайлайтов` : ""}</div>` +
-        (m.mvp ? `<div class="mvp">MVP: ${esc(m.mvp.name)} <b>${(m.mvp.rating ?? 0).toFixed(2)}</b></div>` : "") +
-        `</button>`;
-    }).join("");
-    $("history").querySelectorAll(".mcard").forEach((b) => b.addEventListener("click", () => openMatch(b.dataset.id, true)));
+    renderMatchesPage();
+    renderRecords();
   } catch {
-    $("history").innerHTML = `<div class="note">Не удалось загрузить список матчей</div>`;
+    $("mTable").innerHTML = `<div class="mempty">Не удалось загрузить список матчей</div>`;
   }
 }
+
+// ---------- Страница «Матчи»: матчи FACEIT + мои разборы в одной таблице ----------
+let MY_FACEIT = null;         // мой профиль FACEIT с последними матчами
+let MFILTER = "all";          // all / done / todo
+
+async function loadMyFaceit() {
+  const nick = USER?.faceit?.nickname;
+  if (nick) {
+    try {
+      const res = await fetch(`/api/faceit/player?nickname=${encodeURIComponent(nick)}&limit=30`);
+      if (res.ok) MY_FACEIT = await res.json();
+    } catch { /* FACEIT недоступен — покажем только разборы */ }
+  }
+  renderMatchesPage();
+}
+
+const myStat = (m, nick) => (m.stats || []).find((q) => String(q.name).toLowerCase() === String(nick || "").toLowerCase()) || null;
+
+function buildRows() {
+  const nick = USER?.faceit?.nickname || ME;
+  const rows = [], used = new Set();
+  for (const fm of MY_FACEIT?.matches || []) {
+    const saved = findSaved(fm, nick);
+    if (saved) used.add(saved.id);
+    const [a, b] = String(fm.score || "").split(":").map((x) => parseInt(x));
+    const st = saved ? myStat(saved, nick) : null;
+    rows.push({ ts: fm.finished_at || 0, map: fm.map, a, b, won: fm.won, k: fm.kills, d: fm.deaths, as: fm.assists,
+                rating: st?.rating ?? null, saved, fid: fm.match_id, url: fm.url, src: "faceit", hl: saved?.highlights || 0 });
+  }
+  // Разборы, которых нет среди последних матчей FACEIT (старые или загруженные вручную)
+  for (const m of MATCH_LIST) {
+    if (used.has(m.id)) continue;
+    const st = myStat(m, nick);
+    let a = m.score[0], b = m.score[1];
+    if (st && st.team >= 0) { a = m.score[st.team]; b = m.score[1 - st.team]; }
+    rows.push({ ts: m.created, map: m.map, a, b, won: st ? (a > b ? true : a < b ? false : null) : null,
+                k: st?.kills, d: st?.deaths, as: st?.assists, rating: st?.rating ?? null,
+                saved: m, src: "upload", hl: m.highlights || 0 });
+  }
+  return rows;
+}
+
+// Цвет и сокращение для значка карты
+const MAP_COLORS = { de_mirage: "#e7a64a", de_inferno: "#e0663b", de_ancient: "#45b07a", de_anubis: "#d6b13f", de_nuke: "#58a0e6",
+                     de_dust2: "#e3c27a", de_overpass: "#5bbcb4", de_vertigo: "#9b8cf0", de_train: "#a7adb7" };
+const mapColor = (m) => MAP_COLORS[m] || "#8b909c";
+const mapAbbr = (m) => mapTitle(m).replace(/[^A-Za-zА-Яа-я0-9]/g, "").slice(0, 2).toUpperCase() || "?";
+
+function dayLabel(ts) {
+  const d = new Date(ts * 1000), t = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(t) - day(d)) / 86400000);
+  if (diff === 0) return "Сегодня";
+  if (diff === 1) return "Вчера";
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
+
+function renderMatchesPage() {
+  const box = $("mTable");
+  const setCounts = (a, d, t) => { $("cAll").textContent = a; $("cDone").textContent = d; $("cTodo").textContent = t; };
+  if (!USER) {
+    setCounts(0, 0, 0);
+    $("mSub").textContent = "";
+    box.innerHTML = `<div class="mempty">Войдите через Steam — здесь появятся ваши матчи FACEIT и разборы.<br><br>` +
+      `<a class="steambtn" href="/auth/steam">Войти через Steam</a></div>`;
+    return;
+  }
+  const all = buildRows();
+  const done = all.filter((r) => r.saved).length;
+  setCounts(all.length, done, all.length - done);
+  $("mSub").textContent = `Разобрано матчей: ${done}`;
+
+  // Фильтр по карте — только карты, которые есть в списке
+  const sel = $("fMap"), cur = sel.value;
+  const maps = [...new Set(all.map((r) => r.map).filter(Boolean))].sort();
+  sel.innerHTML = `<option value="">Все карты</option>` + maps.map((m) => `<option value="${esc(m)}">${esc(mapTitle(m))}</option>`).join("");
+  sel.value = maps.includes(cur) ? cur : "";
+
+  let rows = all.filter((r) => MFILTER === "all" || (MFILTER === "done") === !!r.saved)
+                .filter((r) => !sel.value || r.map === sel.value);
+  const sort = $("fSort").value;
+  if (sort === "old") rows.sort((x, y) => x.ts - y.ts);
+  else if (sort === "rating") rows.sort((x, y) => (y.rating ?? -1) - (x.rating ?? -1));
+  else rows.sort((x, y) => y.ts - x.ts);
+
+  const head = `<div class="mth"><span>Карта</span><span>Время</span><span>Счёт</span><span>K / D / A</span>` +
+               `<span title="HLTV Rating 1.0 — есть у разобранных матчей">Рейтинг</span><span>Хайлайты</span></div>`;
+  if (!rows.length) {
+    box.innerHTML = head + `<div class="mempty">${MFILTER === "done" ? "Пока нет разобранных матчей — загрузите демку." : "Матчей не найдено."}</div>`;
+    return;
+  }
+
+  const time = (ts) => new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const rowHtml = (r) => {
+    const sc = r.won === true ? "w" : r.won === false ? "l" : "";
+    const hasScore = !isNaN(r.a) && !isNaN(r.b);
+    const rating = r.rating != null
+      ? `<b class="${r.rating >= 1.1 ? "good" : r.rating < 0.9 ? "bad" : ""}">${Number(r.rating).toFixed(2)}</b>` +
+        `<div class="rb"><i style="width:${Math.min(100, (r.rating / 2) * 100)}%;background:${r.rating >= 1.1 ? "var(--win)" : r.rating < 0.9 ? "var(--lose)" : "#8f86f0"}"></i></div>`
+      : `<span class="none">—</span>`;
+    const acts = r.saved
+      ? `${r.hl ? `<span class="hlchip" title="Хайлайтов в матче">★ ${r.hl}</span>` : ""}<span class="chev">›</span>`
+      : `<button class="abtn imp" data-fid="${esc(r.fid)}" title="Выберите скачанную демку этого матча">Загрузить · 2 <span class="coin"></span></button>` +
+        `<a class="abtn ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Комната ↗</a>`;
+    return `<div class="mtr ${r.won === true ? "win" : r.won === false ? "lose" : ""}${r.saved ? " done" : ""}"${r.saved ? ` data-id="${esc(r.saved.id)}"` : ""}>` +
+      `<div class="mmap"><span class="micon" style="background:${mapColor(r.map)}">${esc(mapAbbr(r.map))}</span>` +
+      `<div><div class="mname">${esc(mapTitle(r.map))}${hasScore ? `<span class="s ${sc}">${r.a}–${r.b}</span>` : ""}</div>` +
+      `<div class="mmeta"><span class="mtag${r.src === "upload" ? " up" : ""}">${r.src === "faceit" ? "FACEIT" : "Загружен"}</span>` +
+      `${r.ts ? `${dayLabel(r.ts)}, ${time(r.ts)}` : ""}</div></div></div>` +
+      `<div class="mtime">${r.ts ? time(r.ts) : ""}</div>` +
+      `<div class="mscore ${sc}">${hasScore ? `${r.a}<span>:</span>${r.b}` : ""}</div>` +
+      `<div class="mkda">${r.k ?? "—"} <span>/</span> ${r.d ?? "—"} <span>/</span> ${r.as ?? "—"}</div>` +
+      `<div class="mrat">${rating}</div><div class="mact">${acts}</div></div>`;
+  };
+
+  let html = head;
+  if (sort === "rating") html += rows.map(rowHtml).join("");
+  else {
+    let group = null, chunk = [];
+    const flush = () => { if (chunk.length) html += `<div class="mgroup">${group}<small>· Матчей: ${chunk.length}</small></div>` + chunk.join(""); chunk = []; };
+    for (const r of rows) {
+      const g = r.ts ? dayLabel(r.ts) : "Без даты";
+      if (g !== group) { flush(); group = g; }
+      chunk.push(rowHtml(r));
+    }
+    flush();
+  }
+  box.innerHTML = html;
+
+  box.querySelectorAll(".mtr.done").forEach((row) => row.addEventListener("click", () => openMatch(row.dataset.id, true)));
+  box.querySelectorAll(".abtn.imp").forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ROW_FACEIT_ID = b.dataset.fid;
+    $("rowFile").click();
+  }));
+}
+
+$("mTabs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+  MFILTER = b.dataset.f;
+  $("mTabs").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  renderMatchesPage();
+}));
+$("fMap").addEventListener("change", renderMatchesPage);
+$("fSort").addEventListener("change", renderMatchesPage);
+$("syncBtn").addEventListener("click", async () => {
+  $("syncBtn").disabled = true;
+  await Promise.all([loadMyFaceit(), loadHistory()]);
+  $("syncBtn").disabled = false;
+});
+
+// ---------- Рекорды ----------
+function myGames() {
+  const nick = USER?.faceit?.nickname || ME;
+  const games = [];
+  for (const m of MATCH_LIST) {
+    const st = myStat(m, nick);
+    if (!st || st.team < 0) continue;
+    games.push({ m, st, a: m.score[st.team], b: m.score[1 - st.team] });
+  }
+  return games;
+}
+
+function renderRecords() {
+  const box = $("recs");
+  if (!USER) { box.innerHTML = `<div class="note">Войдите через Steam, чтобы увидеть свои рекорды.</div>`; $("recSub").textContent = ""; return; }
+  const games = myGames();
+  $("recSub").textContent = games.length ? `По ${games.length} ${games.length === 1 ? "матчу" : "матчам"}` : "";
+  const hsk = (st) => Math.round(((st.kills || 0) * (st.hs || 0)) / 100);
+  const kd = (st) => (st.deaths ? st.kills / st.deaths : st.kills || 0);
+  const RECS = [
+    ["Больше всего убийств", (st) => st.kills, (v) => v],
+    ["Больше всего хедшотов", hsk, (v) => v],
+    ["Самый высокий HS%", (st) => (st.kills >= 5 ? st.hs : null), (v) => `${v}%`],
+    ["Лучший K/D", kd, (v) => v.toFixed(2)],
+    ["Самый высокий ADR", (st) => st.adr, (v) => Number(v).toFixed(1)],
+    ["Самый высокий рейтинг", (st) => st.rating, (v) => Number(v).toFixed(2)],
+    ["Больше всего ассистов", (st) => st.assists, (v) => v],
+    ["Больше всего первых убийств", (st) => st.fk, (v) => v],
+    ["Больше всего клатчей", (st) => st.clutches, (v) => v],
+    ["Больше всего урона гранатами", (st) => st.ud, (v) => v],
+    ["Лучший KAST", (st) => st.kast, (v) => `${v}%`],
+    ["Больше всего мульти-киллов", (st) => (st.aces || 0) + (st.k4 || 0) + (st.k3 || 0), (v) => v],
+  ];
+  const date = (ts) => new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
+  box.innerHTML = RECS.map(([label, get, fmt]) => {
+    let best = null;
+    for (const g of games) {
+      const v = get(g.st);
+      if (v == null || isNaN(v) || v <= 0) continue;
+      if (!best || v > best.v) best = { v, g };
+    }
+    if (!best) return `<div class="rec empty"><div class="lb">${label}</div><div class="vl">—</div>` +
+                      `<div class="ft"><span class="dt">Пока нет данных</span></div></div>`;
+    const { m, a, b } = best.g;
+    const sc = a > b ? "good" : a < b ? "bad" : "";
+    return `<button class="rec" data-id="${esc(m.id)}" style="--c:${mapColor(m.map)}">` +
+      `<span class="bg" style="background-image:url('/static/maps/${encodeURIComponent(m.map)}.png')"></span>` +
+      `<div class="lb">${label}</div><div class="vl">${fmt(best.v)}</div>` +
+      `<div class="ft"><span><div class="mp">${esc(mapTitle(m.map))}</div><div class="dt">${date(m.created)}</div></span>` +
+      `<span class="sc ${sc}">${a}–${b}</span></div></button>`;
+  }).join("");
+  box.querySelectorAll(".rec[data-id]").forEach((c) => c.addEventListener("click", () => openMatch(c.dataset.id, true)));
+}
+
+// ---------- Сравнение ----------
+const CMP = { me: null, rival: null, rivalNick: null };
+const CMP_GROUPS = [
+  ["Основные показатели", [["winrate", "Победы, %"], ["kd", "K / D"], ["kills", "Убийств за матч"], ["adr", "ADR"]]],
+  ["Стрельба", [["hs", "Хедшоты, %"], ["kr", "Убийств за раунд"]]],
+  ["Командная игра", [["assists", "Ассистов за матч"], ["mvps", "MVP за матч"]]],
+  ["Мульти-киллы", [["triple", "3K"], ["quadro", "4K"], ["penta", "Эйсы"]]],
+];
+
+async function fetchSummary(nick) {
+  const res = await fetch(`/api/faceit/summary?nickname=${encodeURIComponent(nick)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Игрок не найден");
+  return data;
+}
+
+async function initCompare(force = false) {
+  if (!USER) { $("vs").innerHTML = `<div class="note">Войдите через Steam, чтобы сравнивать себя с другими игроками.</div>`; $("cmpBars").innerHTML = ""; return; }
+  const myNick = USER.faceit?.nickname;
+  if (!myNick) { $("vs").innerHTML = `<div class="note">Для сравнения нужен аккаунт FACEIT, привязанный к вашему Steam.</div>`; return; }
+  const fromUrl = decodeURIComponent((location.pathname.match(/^\/app\/compare\/([^/]+)/) || [])[1] || "");
+  if (fromUrl) CMP.rivalNick = fromUrl;
+  renderCompare();
+  try {
+    if (!CMP.me || force) CMP.me = await fetchSummary(myNick);
+    if (CMP.rivalNick && (force || CMP.rival?.nickname?.toLowerCase() !== CMP.rivalNick.toLowerCase())) {
+      CMP.rival = await fetchSummary(CMP.rivalNick);
+    }
+  } catch (err) {
+    CMP.rival = null;
+    $("cmpBars").innerHTML = `<div class="status err">${esc(err.message)}</div>`;
+  }
+  renderCompare();
+}
+
+function renderCompare() {
+  const { me, rival } = CMP;
+  let leadMe = 0, leadRival = 0, bars = "";
+  if (me && rival) {
+    for (const [title, rows] of CMP_GROUPS) {
+      bars += `<div class="cgroup">${title}</div>`;
+      for (const [key, label] of rows) {
+        const a = me.stats[key], b = rival.stats[key];
+        const fmt = (v) => (v == null ? "—" : Number.isInteger(v) ? v : Number(v).toFixed(key === "kd" || key === "kr" ? 2 : 1));
+        const sum = (a || 0) + (b || 0);
+        const p = sum ? ((a || 0) / sum) * 100 : 50;
+        const win = a == null || b == null || a === b ? 0 : a > b ? 1 : -1;
+        if (win > 0) leadMe++; else if (win < 0) leadRival++;
+        bars += `<div class="crow"><div class="lbl">${label}</div>` +
+          `<span class="cr">${win > 0 ? "👑" : ""}</span>` +
+          `<span class="v l ${win < 0 ? "dim" : ""}">${fmt(a)}</span>` +
+          `<span class="line" style="--p:${p.toFixed(1)}%"></span>` +
+          `<span class="v r ${win > 0 ? "dim" : ""}">${fmt(b)}</span>` +
+          `<span class="cr">${win < 0 ? "👑" : ""}</span></div>`;
+      }
+    }
+  }
+  const card = (p, color, label, lead) => `<div class="vsp" style="--c:${color}">` +
+    (p.avatar ? `<img class="av" src="${esc(p.avatar)}" alt="">` : `<span class="av"></span>`) +
+    `<div class="nm">${esc(p.nickname)}</div><div class="mt">${label} · ${p.matches} матчей</div>` +
+    `<div class="tags"><span>${p.elo ?? "—"} ELO</span><span>${p.level ?? "—"} ур.</span></div>` +
+    (lead != null ? `<div class="lead">впереди по ${lead}</div>` : "") + `</div>`;
+  const left = me ? card(me, "#5bb8ff", "Вы", rival ? leadMe : null) : `<div class="vsp"><div class="note">Загружаем ваш профиль...</div></div>`;
+  const right = rival
+    ? card(rival, "#ff5d73", "Соперник", leadRival).replace(/<\/div>$/, `<button class="pbtn chg" id="pickOpen2">⇄ Сменить соперника</button></div>`)
+    : `<div class="vsp"><button class="pickbtn" id="pickOpen">+</button><div class="nm" style="color:var(--accent)">Выберите соперника</div>` +
+      `<div class="mt">${CMP.rivalNick ? "Загружаем..." : "Любой игрок FACEIT"}</div></div>`;
+  $("vs").innerHTML = left + `<div class="vsmid">VS</div>` + right;
+  $("cmpBars").innerHTML = bars || (me && !CMP.rivalNick ? `<div class="note" style="text-align:center">Выберите соперника, чтобы сравнить статистику.</div>` : $("cmpBars").innerHTML);
+  ["pickOpen", "pickOpen2"].forEach((id) => $(id)?.addEventListener("click", openPicker));
+}
+
+function openPicker() {
+  $("pickModal").classList.add("on");
+  $("pickInput").value = "";
+  $("pickInput").focus();
+  // Игроки из моих разобранных матчей: сначала те, с кем играл чаще
+  const nick = (USER?.faceit?.nickname || ME || "").toLowerCase();
+  const count = {};
+  for (const m of MATCH_LIST) for (const p of m.stats || []) {
+    const n = String(p.name);
+    if (n.toLowerCase() !== nick) count[n] = (count[n] || 0) + 1;
+  }
+  const names = Object.entries(count).sort((x, y) => y[1] - x[1]).slice(0, 30);
+  $("pickList").innerHTML = names.length
+    ? names.map(([n, c]) => `<div class="pickrow"><span>${esc(n)}</span><small class="note" style="margin:0">${c} ${c === 1 ? "матч" : "матча"}</small>` +
+        `<button data-n="${esc(n)}">Сравнить</button></div>`).join("")
+    : `<div class="note">Разберите пару матчей — здесь появятся ваши тиммейты и соперники.</div>`;
+  $("pickList").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => pickRival(b.dataset.n)));
+}
+
+function pickRival(nick) {
+  nick = nick.trim();
+  if (!nick) return;
+  $("pickModal").classList.remove("on");
+  CMP.rivalNick = nick;
+  CMP.rival = null;
+  history.pushState({}, "", `/app/compare/${encodeURIComponent(nick)}`);
+  initCompare();
+}
+
+$("pickForm").addEventListener("submit", (e) => { e.preventDefault(); pickRival($("pickInput").value); });
+$("pickClose").addEventListener("click", () => $("pickModal").classList.remove("on"));
+$("pickModal").addEventListener("click", (e) => { if (e.target === $("pickModal")) $("pickModal").classList.remove("on"); });
+$("cmpRefresh").addEventListener("click", () => initCompare(true));
 
 // ---------- Моя статистика по всем матчам ----------
 function renderMyStats(list) {
@@ -890,6 +1427,7 @@ async function openMatch(id, push) {
 // Показать разбор и поменять адрес страницы на /match/<id>, чтобы им можно было поделиться
 function showMatch(data, push) {
   TAB = "table";                      // новый матч открываем на вкладке «Таблица»
+  navOn("matches");
   render(data);
   if (data.id && push) history.pushState({ id: data.id }, "", `/match/${data.id}`);
   window.scrollTo({ top: 0 });
@@ -909,7 +1447,7 @@ async function copyLink(id) {
 window.addEventListener("popstate", () => {
   const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
   if (m) openMatch(m[1], false);
-  else showHome();
+  else showView(viewFromPath(), false);
 });
 
 // ---------- Поиск игрока FACEIT ----------
@@ -950,7 +1488,7 @@ $("rowFile").addEventListener("change", () => {
   const f = $("rowFile").files[0];
   $("rowFile").value = "";
   if (!f) return;
-  $("upload").scrollIntoView({ behavior: "smooth" });
+  showView("upload");
   upload(f, ROW_FACEIT_ID);
 });
 
@@ -1972,10 +2510,11 @@ $("play").addEventListener("click", () => (R.playing ? stop() : play()));
 $("seek").addEventListener("input", (e) => { R.pos = Number(e.target.value); draw(); });
 
 // ---------- При открытии страницы ----------
-loadUser().finally(loadHistory);
+loadUser().finally(() => { loadHistory(); if (VIEW === "compare") initCompare(); });
 {
   const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
   if (m) openMatch(m[1], false);
+  else showView(viewFromPath(), false);
 }
 </script>
 </body>

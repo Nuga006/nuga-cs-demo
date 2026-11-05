@@ -155,6 +155,13 @@ def index():
     return FileResponse(BASE / "static" / "index.html")
 
 
+@app.get("/app/{view}")
+@app.get("/app/{view}/{rest:path}")
+def app_view(view: str, rest: str = ""):
+    """Разделы приложения (/app/stats, /app/upload, ...) — та же страница, она сама откроет нужный раздел."""
+    return FileResponse(BASE / "static" / "index.html")
+
+
 def file_id(path: Path) -> str:
     """Отпечаток файла: одинаковая демка всегда даёт одинаковый номер — так находим уже разобранные."""
     h = hashlib.sha256()
@@ -192,10 +199,26 @@ def match_summary(mid: str, data: dict) -> dict:
         "highlights": len(data.get("replay", {}).get("highlights", [])),
         # Статистика каждого игрока — для раздела «Моя статистика» по всем матчам
         "stats": [
-            {k: p.get(k) for k in ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "rating", "fk", "fd")}
+            {k: p.get(k) for k in ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "rating", "fk", "fd", "ud")}
             | {"team": teams.index(p["team"]) if p["team"] in teams else -1}
-            for p in players
+            | highlight_counts(data, i)
+            for i, p in enumerate(players)
         ],
+        "v": META_VERSION,
+    }
+
+
+META_VERSION = 2     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
+
+
+def highlight_counts(data: dict, i: int) -> dict:
+    """Сколько у игрока эйсов, 4K, 3K и выигранных клатчей в матче — для «Рекордов»."""
+    hls = [h for h in data.get("replay", {}).get("highlights", []) if h.get("player") == i]
+    return {
+        "aces": sum(h["type"] == "ACE" for h in hls),
+        "k4": sum(h["type"] == "4K" for h in hls),
+        "k3": sum(h["type"] == "3K" for h in hls),
+        "clutches": sum(h["type"].startswith("1v") for h in hls),
     }
 
 
@@ -311,7 +334,7 @@ def list_matches(request: Request):
     for path in MATCHES.glob("*.meta.json"):
         try:
             meta = json.loads(path.read_text(encoding="utf-8"))
-            if "stats" not in meta:
+            if meta.get("v", 1) < META_VERSION:
                 meta = upgrade_meta(meta)
             played = bool(nick) and any(str(p.get("name", "")).lower() == nick for p in meta.get("stats", []))
             if meta["id"] in mine or played:
@@ -428,6 +451,63 @@ def my_score(score: str | None, won: bool | None) -> str:
     return f"{hi} : {lo}" if won else f"{lo} : {hi}"
 
 
+SUMMARY_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def num_or_none(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.get("/api/faceit/summary")
+def faceit_summary(nickname: str = Query(..., min_length=2, max_length=32), limit: int = Query(20, ge=5, le=50)):
+    """Средние показатели игрока FACEIT за последние матчи — для «Сравнения»."""
+    key = f"{nickname.lower()}:{limit}"
+    cached = SUMMARY_CACHE.get(key)
+    if cached and cached[0] > time.time():
+        return cached[1]
+
+    player = faceit_get("/players", {"nickname": nickname, "game": "cs2"})
+    pid = player["player_id"]
+    cs2 = (player.get("games") or {}).get("cs2") or {}
+    items = faceit_get(f"/players/{pid}/games/cs2/stats", {"offset": 0, "limit": limit}).get("items", [])
+    rows = [it.get("stats", {}) for it in items]
+
+    def avg(field):
+        vals = [x for x in (num_or_none(r.get(field)) for r in rows) if x is not None]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    def total(field):
+        return int(sum(num_or_none(r.get(field)) or 0 for r in rows))
+
+    kills, deaths = total("Kills"), total("Deaths")
+    results = [r.get("Result") for r in rows if r.get("Result") in ("0", "1")]
+    summary = {
+        "nickname": player.get("nickname"),
+        "avatar": player.get("avatar"),
+        "level": cs2.get("skill_level"),
+        "elo": cs2.get("faceit_elo"),
+        "matches": len(rows),
+        "stats": {
+            "winrate": round(100 * results.count("1") / len(results), 1) if results else None,
+            "kd": round(kills / deaths, 2) if deaths else None,
+            "kills": avg("Kills"),
+            "adr": avg("ADR"),
+            "hs": avg("Headshots %"),
+            "kr": avg("K/R Ratio"),
+            "assists": avg("Assists"),
+            "mvps": avg("MVPs"),
+            "triple": total("Triple Kills"),
+            "quadro": total("Quadro Kills"),
+            "penta": total("Penta Kills"),
+        },
+    }
+    SUMMARY_CACHE[key] = (time.time() + 300, summary)
+    return summary
+
+
 @app.get("/api/faceit/player")
 def faceit_player(nickname: str = Query(..., min_length=2, max_length=32), limit: int = Query(20, ge=1, le=50)):
     """Профиль игрока FACEIT по нику и его последние матчи CS2 со статистикой."""
@@ -474,6 +554,7 @@ def faceit_player(nickname: str = Query(..., min_length=2, max_length=32), limit
             "score": my_score(st.get("Score"), won),
             "kills": st.get("Kills"),
             "deaths": st.get("Deaths"),
+            "assists": st.get("Assists"),
             "kd": st.get("K/D Ratio"),
             "adr": st.get("ADR"),
             "hs": st.get("Headshots %"),
