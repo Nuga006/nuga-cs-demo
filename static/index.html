@@ -2,8 +2,16 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Nuga CS Demo</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#0b0c10">
+<link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nuga CS">
 <style>
   :root {
     --bg: #0f1115; --panel: #181b22; --line: #262a33;
@@ -434,7 +442,7 @@
   .ccell .cb { height: 4px; background: #2a2d36; border-radius: 2px; overflow: hidden; margin-top: 8px; } .ccell .cb i { display: block; height: 100%; }
   .tseg { margin-bottom: 10px; }
   @media (max-width: 760px) {
-    .shead { grid-template-columns: 1fr; } .sbar { top: 108px; }
+    .shead { grid-template-columns: 1fr; } .sbar { top: 56px; }
     .cgrid { grid-template-columns: repeat(3, 1fr); }
     .scard .vl { font-size: 28px; }
   }
@@ -521,20 +529,49 @@
     .mtr .mtime, .mtr .mscore, .mtr .mkda, .mtr .mrat { display: none; }
     .mact .ghost { display: none; }
   }
+  .nmore { display: none; }
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; }
-    .sidenav { position: sticky; top: 56px; z-index: 18; height: auto; flex-direction: row; overflow-x: auto; padding: 8px 10px;
-               border-right: 0; border-bottom: 1px solid rgba(255,255,255,.05); background: rgba(11,12,16,.92); backdrop-filter: blur(10px);
-               scrollbar-width: none; }
-    .sidenav::-webkit-scrollbar { display: none; }
-    .sidenav a { padding: 8px 12px; white-space: nowrap; font-size: 14px; }
+    /* Нижнее меню, как в мобильных приложениях: 4 главных раздела + «Ещё» */
+    .sidenav { position: fixed; top: auto; left: 0; right: 0; bottom: 0; z-index: 30; height: auto; flex-direction: row; gap: 0;
+               padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); overflow: visible;
+               border-right: 0; border-top: 1px solid rgba(255,255,255,.08); background: rgba(11,12,16,.94); backdrop-filter: blur(14px); }
+    .sidenav a, .nmore { flex: 1; flex-direction: column; gap: 3px; padding: 6px 2px; font-size: 11px; font-weight: 600; border-radius: 10px;
+                         text-align: center; justify-content: center; color: #9aa0ab; white-space: nowrap; }
+    .sidenav a.on { background: none; color: var(--accent); }
+    .sidenav .ni { font-size: 19px; width: auto; }
+    .nmore { display: flex; align-items: center; background: none; border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+    /* Второстепенные разделы — в выпадающем «Ещё» */
+    .sidenav a[data-view="upload"], .sidenav a[data-view="compare"], .sidenav a[data-view="search"], .sidenav a[data-view="faq"] { display: none; }
+    .sidenav.more a[data-view="upload"], .sidenav.more a[data-view="compare"],
+    .sidenav.more a[data-view="search"], .sidenav.more a[data-view="faq"] {
+      display: flex; position: fixed; right: 10px; width: 190px; flex-direction: row; gap: 10px; justify-content: flex-start;
+      font-size: 15px; padding: 12px 14px; background: #1b1e26; border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+    .sidenav.more a[data-view="upload"]  { bottom: calc(244px + env(safe-area-inset-bottom)); }
+    .sidenav.more a[data-view="compare"] { bottom: calc(190px + env(safe-area-inset-bottom)); }
+    .sidenav.more a[data-view="search"]  { bottom: calc(136px + env(safe-area-inset-bottom)); }
+    .sidenav.more a[data-view="faq"]     { bottom: calc(82px + env(safe-area-inset-bottom)); }
+    .sidenav.more .nmore { color: var(--accent); }
     .nsep, .nfoot { display: none; }
-    .layout .wrap { padding: 18px 12px 48px; }
+    .layout .wrap { padding: 18px 12px calc(96px + env(safe-area-inset-bottom)); }
     .phead h1 { font-size: 26px; }
     .segtabs button { font-size: 13px; padding: 9px 4px; }
     .segtabs .dot { display: none; }
-    .tabs { top: 108px; }
+    .tabs { top: 56px; }
+    .topbar { padding-top: env(safe-area-inset-top); }
   }
+
+  /* Баннер «Установить приложение» */
+  .installbar { display: flex; align-items: center; gap: 12px; background: linear-gradient(90deg, rgba(45,212,191,.14), rgba(34,211,238,.06));
+                border: 1px solid rgba(45,212,191,.35); border-radius: 16px; padding: 12px 14px; margin-bottom: 18px; }
+  .installbar[hidden] { display: none; }
+  .installbar img { width: 44px; height: 44px; border-radius: 11px; }
+  .installbar div { flex: 1; min-width: 0; } .installbar div > b { display: block; }
+  .installbar .pbtn[hidden] { display: none; }
+  .installbar span { color: var(--muted); font-size: 13px; }
+  .installbar .pbtn { padding: 8px 14px; white-space: nowrap; }
+  .ibx { background: none; border: 0; color: var(--muted); font-size: 22px; cursor: pointer; padding: 0 4px; }
+  @media (display-mode: standalone) { .installbar { display: none !important; } }
 
   /* ---------- Каркас приложения ---------- */
   body { background: #0b0c10; }
@@ -655,11 +692,18 @@
     <a href="/app/compare" data-view="compare"><span class="ni">⚔</span>Сравнение</a>
     <a href="/app/search" data-view="search"><span class="ni">⌕</span>Поиск игрока</a>
     <a href="/app/faq" data-view="faq"><span class="ni">?</span>FAQ</a>
+    <button class="nmore" id="navMore" type="button"><span class="ni">⋯</span>Ещё</button>
     <div class="nfoot">Nuga CS Demo · не связан с Valve и FACEIT</div>
   </aside>
 
   <main class="wrap">
   <div id="home">
+    <div class="installbar" id="installBar" hidden>
+      <img src="/static/icons/icon-192.png" alt="">
+      <div><b>Nuga CS Demo на телефоне</b><span id="installText">Установите как приложение — иконка на главном экране и полный экран.</span></div>
+      <button class="pbtn primary" id="installBtn">Установить</button>
+      <button class="ibx" id="installClose" title="Скрыть">×</button>
+    </div>
     <!-- Матчи -->
     <section class="view" data-view="matches">
       <div class="phead">
@@ -2798,6 +2842,51 @@ function tick(ts) {
 window.addEventListener("resize", () => { if (R.data) { draw(); } });
 $("play").addEventListener("click", () => (R.playing ? stop() : play()));
 $("seek").addEventListener("input", (e) => { R.pos = Number(e.target.value); draw(); });
+
+// ---------- Приложение (PWA) ----------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let installEvent = null;
+let installHidden = false;
+try { installHidden = localStorage.getItem("nuga.installHidden") === "1"; } catch { /* ничего */ }
+
+function showInstall(text, button = true) {
+  if (isStandalone() || installHidden) return;
+  $("installBar").hidden = false;
+  if (text) $("installText").innerHTML = text;
+  $("installBtn").hidden = !button;
+}
+
+// Android / Chrome / Edge: браузер сам предлагает установку — показываем свою кнопку
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvent = e;
+  showInstall();
+});
+$("installBtn").addEventListener("click", async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice;
+  installEvent = null;
+  $("installBar").hidden = true;
+});
+window.addEventListener("appinstalled", () => ($("installBar").hidden = true));
+$("installClose").addEventListener("click", () => {
+  $("installBar").hidden = true;
+  try { localStorage.setItem("nuga.installHidden", "1"); } catch { /* ничего */ }
+});
+// iPhone: автоматической установки нет — подсказываем, где кнопка
+if (isIOS && !isStandalone() && matchMedia("(max-width: 760px)").matches) {
+  showInstall("Нажмите <b>Поделиться</b> ⬆︎ внизу Safari → <b>«На экран Домой»</b>.", false);
+}
+
+// Нижнее меню: «Ещё» открывает остальные разделы
+$("navMore").addEventListener("click", (e) => { e.stopPropagation(); $("sidenav").classList.toggle("more"); });
+document.addEventListener("click", (e) => { if (!e.target.closest(".nmore")) $("sidenav").classList.remove("more"); });
 
 // ---------- При открытии страницы ----------
 loadUser().finally(() => { loadHistory(); if (VIEW === "compare") initCompare(); });

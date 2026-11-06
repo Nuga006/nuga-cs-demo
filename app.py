@@ -149,6 +149,13 @@ def landing():
     return FileResponse(BASE / "static" / "landing.html")
 
 
+@app.get("/sw.js")
+def service_worker():
+    """Сервис-воркер должен лежать в корне сайта, чтобы управлять всеми страницами приложения."""
+    return FileResponse(BASE / "static" / "sw.js", media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/app")
 def index():
     """Само приложение: мои матчи, статистика, загрузка демки."""
