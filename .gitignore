@@ -25,3 +25,6 @@ static/maps/
 
 # Настройки редактора
 .vscode/
+
+# 3D-клипы из CS2 (clips3d.py)
+clips3d/
