@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Конфиденциальность — Nuga CS Demo</title>
+<meta name="theme-color" content="#0b0c10">
+<link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
+<style>
+  :root { --bg: #0b0c10; --panel: #15171d; --line: #262a33; --text: #e8e9ec; --muted: #8b909c; --accent: #2dd4bf; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  a { color: var(--accent); }
+  .back { text-decoration: none; font-weight: 600; }
+  h1 { font-size: 34px; letter-spacing: -.02em; margin: 16px 0 4px; }
+  .upd { color: var(--muted); margin-bottom: 28px; }
+  h2 { font-size: 20px; margin: 30px 0 8px; }
+  p, li { color: #c9ccd3; }
+  ul { padding-left: 20px; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; }
+  .muted { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/app">‹ Вернуться в приложение</a>
+  <h1>Конфиденциальность</h1>
+  <div class="upd">Обновлено 6 ноября 2026</div>
+
+  <div class="box">Коротко: мы храним только то, что нужно для разбора матчей. Пароли мы не видим, данные никому не продаём,
+    а аккаунт вы можете удалить сами в любой момент.</div>
+
+  <h2>Что мы храним</h2>
+  <ul>
+    <li><b>Steam ID</b> — после входа через Steam. Пароль вводится только на сайте Steam, мы его не получаем.</li>
+    <li><b>Ник, аватар, уровень и ELO FACEIT</b> — открытые данные профиля, их мы получаем через официальный FACEIT Data API.</li>
+    <li><b>Баланс монет и историю начислений</b>.</li>
+    <li><b>Список «моих матчей»</b> — какие разборы вы загружали.</li>
+    <li><b>Разборы матчей</b>: статистика, раунды, позиции и события из демки. В разборе есть ники и статистика всех 10 участников матча.</li>
+  </ul>
+
+  <h2>Что мы не храним</h2>
+  <ul>
+    <li><b>Сами демки</b> — файл удаляется сразу после разбора.</li>
+    <li>Пароли, данные банковских карт, переписку, местоположение.</li>
+  </ul>
+
+  <h2>Cookie</h2>
+  <p>Мы ставим одну cookie — <code>nuga_session</code>, чтобы вы оставались в аккаунте до 30 дней. Рекламных и следящих cookie нет.
+    В браузере также хранятся мелкие настройки (например, скрытый баннер установки) — они не уходят на сервер.</p>
+
+  <h2>Кто видит данные</h2>
+  <ul>
+    <li>Разбор матча может открыть любой, у кого есть ссылка на него, — так им можно поделиться с командой.</li>
+    <li>Ваши монеты, историю и список матчей видите только вы.</li>
+    <li>Мы не продаём и не передаём данные третьим лицам. Запросы к FACEIT и Steam отправляются только чтобы показать ваш профиль и матчи.</li>
+  </ul>
+
+  <h2>Защита и резервные копии</h2>
+  <p>Ключи и секреты хранятся только на сервере. Раз в день делается резервная копия базы и разборов, хранятся копии за последние 14 дней.</p>
+
+  <h2>Как удалить аккаунт</h2>
+  <p>В приложении откройте <b>FAQ → «Удалить мой аккаунт»</b>. Удалятся аккаунт, монеты, история и список ваших матчей.
+    Разборы матчей останутся: в них статистика всех участников, и их могут открывать другие игроки этих матчей.</p>
+
+  <p class="muted">Nuga CS Demo — некоммерческий студенческий проект, он не связан с Valve и FACEIT.
+    Counter-Strike — товарный знак Valve Corporation.</p>
+</div>
+</body>
+</html>

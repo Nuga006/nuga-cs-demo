@@ -7,6 +7,9 @@ import hashlib
 import hmac
 import secrets
 import sqlite3
+import threading
+import zipfile
+from collections import defaultdict, deque
 from contextlib import closing
 from datetime import date
 import json
@@ -107,6 +110,57 @@ with closing(db()) as _con, _con:
     """)
 
 
+# ---------------- Резервные копии ----------------
+# По умолчанию — папка backups рядом с проектом. Лучше указать в .env папку, которая синхронизируется
+# с облаком (например BACKUP_DIR=G:\\Мой диск\\nuga-backups) — тогда копии переживут поломку ноутбука.
+BACKUP_KEEP_DAYS = 14
+
+
+def backup_dir() -> Path:
+    d = Path(os.environ.get("BACKUP_DIR") or (BASE / "backups"))
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def make_backup() -> Path:
+    """База — целиком в архив за день (она маленькая), разборы — докопируются только новые файлы."""
+    out = backup_dir()
+    stamp = date.today().isoformat()
+    tmp = out / f"nuga-{stamp}.db.tmp"
+    with closing(sqlite3.connect(DB_PATH)) as src, closing(sqlite3.connect(tmp)) as dst:
+        src.backup(dst)                          # правильная копия, даже если база сейчас используется
+    archive = out / f"nuga-db-{stamp}.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(tmp, "nuga.db")
+        for meta in MATCHES.glob("*.meta.json"):
+            z.write(meta, f"matches/{meta.name}")
+    tmp.unlink(missing_ok=True)
+    # Полные разборы не меняются — копируем только те, которых ещё нет в копии
+    mirror = out / "matches"
+    mirror.mkdir(exist_ok=True)
+    for f in MATCHES.glob("*.json.gz"):
+        target = mirror / f.name
+        if not target.exists() or target.stat().st_mtime < f.stat().st_mtime:
+            shutil.copy2(f, target)
+    # Старые архивы базы удаляем, оставляем последние BACKUP_KEEP_DAYS
+    for old in sorted(out.glob("nuga-db-*.zip"))[:-BACKUP_KEEP_DAYS]:
+        old.unlink(missing_ok=True)
+    return archive
+
+
+def backup_loop():
+    while True:
+        try:
+            if not (backup_dir() / f"nuga-db-{date.today().isoformat()}.zip").exists():
+                print("Резервная копия:", make_backup())
+        except Exception as e:                   # копия не должна ронять сайт
+            print("Не удалось сделать резервную копию:", e)
+        time.sleep(3 * 3600)                     # проверяем раз в 3 часа, копия — раз в день
+
+
+threading.Thread(target=backup_loop, daemon=True).start()
+
+
 def get_user(steam_id: str) -> dict:
     """Пользователь из базы. При первом входе создаём его и дарим стартовые монеты."""
     with closing(db()) as con, con:
@@ -141,6 +195,55 @@ app = FastAPI(title="Nuga CS Demo")
 
 # Раздаём файлы из папки static (картинки радаров и т.п.) по адресу /static/...
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+
+
+# ---------------- Защита: ограничение частоты запросов и заголовки безопасности ----------------
+
+# (начало адреса, сколько запросов можно, за сколько секунд) — проверяются по порядку, срабатывает первое совпадение
+RATE_RULES = [
+    ("/api/chunk", 150, 600),     # кусочки демок: ~20 демок по 200 МБ за 10 минут
+    ("/api/faceit/", 40, 60),     # запросы к FACEIT тратят лимит нашего ключа
+    ("/auth/", 20, 60),
+    ("/api/", 300, 60),
+]
+_hits: dict[str, deque] = defaultdict(deque)
+_hits_lock = threading.Lock()
+
+
+def client_ip(request: Request) -> str:
+    """Настоящий IP посетителя: через Cloudflare он приходит в заголовке CF-Connecting-IP."""
+    return (request.headers.get("cf-connecting-ip")
+            or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or (request.client.host if request.client else "?"))
+
+
+@app.middleware("http")
+async def protect(request: Request, call_next):
+    path = request.url.path
+    rule = next((r for r in RATE_RULES if path.startswith(r[0])), None)
+    if rule:
+        prefix, limit, window = rule
+        key, now = f"{client_ip(request)}|{prefix}", time.time()
+        with _hits_lock:
+            q = _hits[key]
+            while q and q[0] < now - window:
+                q.popleft()
+            if len(q) >= limit:
+                wait = int(q[0] + window - now) + 1
+                return Response(json.dumps({"detail": f"Слишком много запросов — подождите {wait} сек."}, ensure_ascii=False),
+                                status_code=429, media_type="application/json", headers={"Retry-After": str(wait)})
+            q.append(now)
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
+
+
+# Разбор демки занимает 1–2 ГБ памяти — одновременно делаем только один, остальные ждут своей очереди
+ANALYSIS_SLOT = threading.BoundedSemaphore(1)
+ANALYSIS_WAIT = 300   # сколько секунд можно ждать очереди
 
 
 @app.get("/")
@@ -300,8 +403,13 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
         faceit_id = faceit_id or (old or {}).get("faceit_id")
         if not upgrade and get_user(steam_id)["coins"] < ANALYSIS_PRICE:
             raise HTTPException(402, f"Не хватает монет: разбор стоит {ANALYSIS_PRICE}. Заберите ежедневный бонус!")
-        dem = prepare_demo(raw)
-        data = analyze_demo(dem)
+        if not ANALYSIS_SLOT.acquire(timeout=ANALYSIS_WAIT):
+            raise HTTPException(503, "Сервер сейчас занят разбором других демок — попробуйте через пару минут")
+        try:
+            dem = prepare_demo(raw)
+            data = analyze_demo(dem)
+        finally:
+            ANALYSIS_SLOT.release()
         data["id"] = mid
         data["analyzer_version"] = ANALYZER_VERSION
         save_match(mid, data, faceit_id)
@@ -685,6 +793,26 @@ def steam_callback(request: Request):
     response.set_cookie(SESSION_COOKIE, make_session(match.group(1)), max_age=SESSION_DAYS * 86400,
                         httponly=True, samesite="lax", secure=base.startswith("https"))
     return response
+
+
+@app.post("/api/me/delete")
+def delete_account(request: Request):
+    """Удалить аккаунт: монеты, историю и список «моих матчей». Разборы матчей остаются —
+    в них статистика всех 10 игроков, и их могут открывать по ссылке другие участники."""
+    steam_id = require_login(request)
+    with closing(db()) as con, con:
+        con.execute("DELETE FROM coin_log WHERE steam_id = ?", (steam_id,))
+        con.execute("DELETE FROM user_matches WHERE steam_id = ?", (steam_id,))
+        con.execute("DELETE FROM users WHERE steam_id = ?", (steam_id,))
+    PROFILE_CACHE.pop(steam_id, None)
+    response = Response(json.dumps({"ok": True}), media_type="application/json")
+    response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
+@app.get("/privacy")
+def privacy_page():
+    return FileResponse(BASE / "static" / "privacy.html")
 
 
 @app.get("/auth/logout")

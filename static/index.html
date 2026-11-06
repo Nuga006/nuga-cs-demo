@@ -541,6 +541,13 @@
     .crow { grid-template-columns: 18px 56px 1fr 56px 18px; gap: 8px; } .crow .v { font-size: 18px; }
   }
 
+  .nfoot .plink2 { color: #8b909c; }
+  .dangerz { margin-top: 26px; background: rgba(224,71,76,.06); border: 1px solid rgba(224,71,76,.35); border-radius: 14px; padding: 16px 18px; }
+  .dangerz[hidden] { display: none; }
+  .dangerz h3 { margin: 0 0 4px; font-size: 16px; } .dangerz p { color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+  .dangerbtn { background: transparent; color: var(--lose); border: 1px solid var(--lose); border-radius: 10px; padding: 9px 16px;
+               font: inherit; font-weight: 700; cursor: pointer; }
+  .dangerbtn.sure { background: var(--lose); color: #fff; }
   .faq details { background: #15171d; border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin-bottom: 8px; }
   .faq summary { font-weight: 700; cursor: pointer; }
   .faq p { color: var(--muted); margin: 10px 0 0; }
@@ -717,7 +724,7 @@
     <a href="/app/search" data-view="search"><span class="ni">⌕</span>Поиск игрока</a>
     <a href="/app/faq" data-view="faq"><span class="ni">?</span>FAQ</a>
     <button class="nmore" id="navMore" type="button"><span class="ni">⋯</span>Ещё</button>
-    <div class="nfoot">Nuga CS Demo · не связан с Valve и FACEIT</div>
+    <div class="nfoot"><a href="/privacy" class="plink2">Конфиденциальность</a><br>Nuga CS Demo · не связан с Valve и FACEIT</div>
   </aside>
 
   <main class="wrap">
@@ -824,7 +831,13 @@
         <details><summary>Что значит Rating, KAST, FK–FD?</summary><p><b>Rating 1.0</b> — общая оценка игры по формуле HLTV, 1.00 — средний уровень. <b>KAST</b> — процент раундов, где вы убили, ассистнули, выжили или вас разменяли. <b>FK–FD</b> — первые убийства и первые смерти в раундах.</p></details>
         <details><summary>Можно ли поделиться матчем?</summary><p>Да — на странице матча есть кнопка «Скопировать ссылку». Смотреть по ссылке можно без входа.</p></details>
         <details><summary>Безопасен ли вход через Steam?</summary><p>Пароль вводится только на сайте Steam. Мы получаем лишь ваш Steam ID — по нему находим профиль FACEIT.</p></details>
+        <details><summary>Какие данные вы храните?</summary><p>Steam ID, открытый профиль FACEIT, монеты и разборы матчей. Демки удаляются сразу после разбора, паролей мы не видим. Подробно — на странице <a href="/privacy" style="color:var(--accent)">«Конфиденциальность»</a>.</p></details>
         <details><summary>Почему матч не открывается в CS2?</summary><p>CS2 открывает только демки текущей версии игры. После крупного обновления старые демки могут перестать запускаться.</p></details>
+      </div>
+      <div class="dangerz" id="dangerZone" hidden>
+        <h3>Аккаунт</h3>
+        <p>Удалятся аккаунт, монеты, история и список ваших матчей. Разборы матчей останутся — в них статистика всех участников.</p>
+        <button class="dangerbtn" id="deleteBtn">Удалить мой аккаунт</button>
       </div>
     </section>
 
@@ -995,6 +1008,7 @@ async function loadUser() {
     const me = await (await fetch("/api/me")).json();
     if (!me.logged_in) { showGuestGate(); return; }
     USER = me;
+    $("dangerZone").hidden = false;
     const f = me.faceit;
     $("guestBar").hidden = true;
     $("guestBar").style.display = "none";
@@ -1076,6 +1090,26 @@ function showGuestGate() {
   $("drop").style.display = "none";
   $("priceNote").style.display = "none";
 }
+
+// ---------- Удаление аккаунта: первое нажатие спрашивает, второе удаляет ----------
+$("deleteBtn").addEventListener("click", async () => {
+  const b = $("deleteBtn");
+  if (!b.classList.contains("sure")) {
+    b.classList.add("sure");
+    b.textContent = "Точно удалить? Нажмите ещё раз";
+    setTimeout(() => { b.classList.remove("sure"); b.textContent = "Удалить мой аккаунт"; }, 6000);
+    return;
+  }
+  b.disabled = true;
+  const res = await fetch("/api/me/delete", { method: "POST" });
+  if (res.ok) {
+    try { localStorage.removeItem("nuga.me"); } catch { /* ничего */ }
+    location.href = "/";
+  } else {
+    b.disabled = false;
+    b.textContent = "Не получилось — попробуйте ещё раз";
+  }
+});
 
 // ---------- Вкладки страницы матча ----------
 let TAB = "table";
