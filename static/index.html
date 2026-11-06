@@ -1309,7 +1309,7 @@ function renderMatchesPage() {
       : `<span class="none">—</span>`;
     const acts = r.saved
       ? `${r.hl ? `<span class="hlchip" title="Хайлайтов в матче">★ ${r.hl}</span>` : ""}<span class="chev">›</span>`
-      : `<button class="abtn imp" data-fid="${esc(r.fid)}" title="Выберите скачанную демку этого матча">Загрузить · 2 <span class="coin"></span></button>` +
+      : `<button class="abtn imp" data-fid="${esc(r.fid)}" data-fmap="${esc(r.map || "")}" title="Выберите скачанную демку этого матча">Загрузить · 2 <span class="coin"></span></button>` +
         `<a class="abtn ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Комната ↗</a>`;
     return `<div class="mtr ${r.won === true ? "win" : r.won === false ? "lose" : ""}${r.saved ? " done" : ""}"${r.saved ? ` data-id="${esc(r.saved.id)}"` : ""}>` +
       `<div class="mmap"><span class="micon" style="background:${mapColor(r.map)};--ring:${mapColor(r.map)}">${esc(mapAbbr(r.map))}` +
@@ -1341,6 +1341,7 @@ function renderMatchesPage() {
   box.querySelectorAll(".abtn.imp").forEach((b) => b.addEventListener("click", (e) => {
     e.stopPropagation();
     ROW_FACEIT_ID = b.dataset.fid;
+    ROW_FACEIT_MAP = b.dataset.fmap;
     $("rowFile").click();
   }));
 }
@@ -1927,7 +1928,8 @@ $("search").addEventListener("submit", async (e) => {
 
 // Есть ли уже разбор этого матча FACEIT: сначала по номеру матча, потом по совпадению карты, счёта и K/D игрока
 function findSaved(fm, nick) {
-  const byId = MATCH_LIST.find((x) => x.faceit_id === fm.match_id);
+  // Привязка по номеру — только если карта совпадает (защита от демки не того матча)
+  const byId = MATCH_LIST.find((x) => x.faceit_id === fm.match_id && (!fm.map || x.map === fm.map));
   if (byId) return byId;
   const [a, b] = String(fm.score || "").split(":").map((x) => parseInt(x));
   if (isNaN(a) || isNaN(b)) return null;
@@ -1941,13 +1943,13 @@ function findSaved(fm, nick) {
   }) || null;
 }
 
-let ROW_FACEIT_ID = null;
+let ROW_FACEIT_ID = null, ROW_FACEIT_MAP = null;
 $("rowFile").addEventListener("change", () => {
   const f = $("rowFile").files[0];
   $("rowFile").value = "";
   if (!f) return;
   showView("upload");
-  upload(f, ROW_FACEIT_ID);
+  upload(f, ROW_FACEIT_ID, ROW_FACEIT_MAP);
 });
 
 function renderPlayer(p) {
@@ -1960,7 +1962,7 @@ function renderPlayer(p) {
     const saved = findSaved(m, p.nickname);
     const acts = saved
       ? `<button class="openbtn" data-id="${esc(saved.id)}">Разбор →</button>`
-      : `<button class="upbtn" data-fid="${esc(m.match_id)}" title="Выберите скачанную демку этого матча">Загрузить</button>`;
+      : `<button class="upbtn" data-fid="${esc(m.match_id)}" data-fmap="${esc(m.map || "")}" title="Выберите скачанную демку этого матча">Загрузить</button>`;
     return `<div class="mrow"><span class="rs ${rs}"></span>` +
       `<span><div class="mp">${esc(mapName(m.map))}${saved ? `<span class="donebadge">Разобран</span>` : ""}</div>` +
       `<div class="dt">${date(m.finished_at)}</div></span>` +
@@ -1986,6 +1988,7 @@ function renderPlayer(p) {
   $("player").querySelectorAll(".openbtn").forEach((b) => b.addEventListener("click", () => openMatch(b.dataset.id, true)));
   $("player").querySelectorAll(".upbtn").forEach((b) => b.addEventListener("click", () => {
     ROW_FACEIT_ID = b.dataset.fid;
+    ROW_FACEIT_MAP = b.dataset.fmap;
     $("rowFile").click();
   }));
 }
@@ -2018,7 +2021,7 @@ function sendChunk(form, onProgress) {
   });
 }
 
-async function upload(file, faceitId = null) {
+async function upload(file, faceitId = null, faceitMap = null) {
   $("result").style.display = "none";
   stop();
   bar.style.display = "block";
@@ -2038,6 +2041,7 @@ async function upload(file, faceitId = null) {
       form.append("total", total);
       form.append("filename", file.name);
       if (faceitId) form.append("faceit_id", faceitId);
+      if (faceitId && faceitMap) form.append("faceit_map", faceitMap);
       form.append("file", file.slice(i * CHUNK, (i + 1) * CHUNK), "chunk");
 
       if (i === total - 1) setStatus("Загружаем последний кусочек и разбираем демку... это может занять до минуты");
@@ -2047,7 +2051,10 @@ async function upload(file, faceitId = null) {
       });
     }
     bar.style.display = "none";
-    setStatus("Готово!");
+    if (faceitMap && data.map && data.map !== faceitMap)
+      setStatus(`Готово, но это демка с ${mapTitle(data.map)}, а выбран матч на ${mapTitle(faceitMap)} — к матчу FACEIT не привязали. ` +
+                `Скачайте демку именно этого матча.`, true);
+    else setStatus("Готово!");
     showMatch(data, true);
     loadHistory();
     refreshCoins();

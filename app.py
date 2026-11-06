@@ -370,12 +370,15 @@ def save_match(mid: str, data: dict, faceit_id: str | None = None) -> None:
     write_meta(mid, meta)
 
 
-def link_faceit(mid: str, faceit_id: str | None) -> None:
-    """Демку уже разбирали, но теперь знаем её матч FACEIT — допишем в карточку."""
+def link_faceit(mid: str, faceit_id: str | None, faceit_map: str | None = None) -> None:
+    """Демку уже разбирали, но теперь знаем её матч FACEIT — допишем в карточку.
+    Если карта матча FACEIT не совпадает с картой демки — значит, загрузили не ту демку, не привязываем."""
     path = MATCHES / f"{mid}.meta.json"
     if not faceit_id or not path.exists():
         return
     meta = json.loads(path.read_text(encoding="utf-8"))
+    if faceit_map and meta.get("map") and meta["map"] != faceit_map:
+        return
     if meta.get("faceit_id") != faceit_id:
         meta["faceit_id"] = faceit_id
         write_meta(mid, meta)
@@ -387,7 +390,7 @@ def saved_match_response(mid: str) -> Response:
                     headers={"Content-Encoding": "gzip"})
 
 
-def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
+def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None, faceit_map: str | None = None):
     """Если такую демку уже разбирали — сразу отдаём сохранённое (бесплатно).
     Иначе проверяем монеты, разбираем, сохраняем, списываем монеты и удаляем демку."""
     dem = None
@@ -396,7 +399,7 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
         meta_path = MATCHES / f"{mid}.meta.json"
         old = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else None
         if (MATCHES / f"{mid}.json.gz").exists() and old and old.get("av", 1) >= ANALYZER_VERSION:
-            link_faceit(mid, faceit_id)
+            link_faceit(mid, faceit_id, faceit_map)
             add_user_match(steam_id, mid)
             return saved_match_response(mid)
         upgrade = (MATCHES / f"{mid}.json.gz").exists()     # разбор есть, но старой версии — переразберём бесплатно
@@ -412,6 +415,8 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
             ANALYSIS_SLOT.release()
         data["id"] = mid
         data["analyzer_version"] = ANALYZER_VERSION
+        if faceit_map and data.get("map") != faceit_map:
+            faceit_id = (old or {}).get("faceit_id")       # демка не от того матча FACEIT — не привязываем
         save_match(mid, data, faceit_id)
         if old:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -498,6 +503,7 @@ def upload_chunk(
     filename: str = Form(...),
     file: UploadFile = File(...),
     faceit_id: str = Form(""),
+    faceit_map: str = Form(""),
 ):
     """Загрузка демки по кусочкам: так файл проходит даже через сервисы с лимитом 100 МБ на запрос.
     Кусочки приходят по порядку, мы дописываем их в один файл, а после последнего — разбираем демку."""
@@ -531,7 +537,7 @@ def upload_chunk(
 
     raw = UPLOADS / f"{upload_id}{suffix}"
     part.rename(raw)
-    return run_analysis(raw, steam_id, faceit_id_from(filename, faceit_id))
+    return run_analysis(raw, steam_id, faceit_id_from(filename, faceit_id), faceit_map or None)
 
 
 @app.post("/api/analyze")
