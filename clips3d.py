@@ -206,9 +206,19 @@ def prepare(args):
     demo = Path(args.demo)
     if not demo.exists():
         sys.exit(f"Нет файла демки: {demo}")
+    # Сжатую демку всегда распаковываем заново во временный файл
+    # (рядом может лежать старый match.dem от другого матча — его брать нельзя)
     if demo.suffix in (".gz", ".zst"):
-        from analyzer import prepare_demo
-        demo = prepare_demo(demo)
+        OUT.mkdir(exist_ok=True)
+        tmp = OUT / f"_{mid}.dem"
+        if demo.suffix == ".gz":
+            with gzip.open(demo, "rb") as src, open(tmp, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+        else:
+            import zstandard
+            with open(demo, "rb") as src, open(tmp, "wb") as dst:
+                zstandard.ZstdDecompressor().copy_stream(src, dst)
+        demo = tmp
 
     # Проверяем, что демка от этого же матча: название карты записано в начале файла .dem
     want_map = str(data.get("map") or "")
@@ -223,7 +233,12 @@ def prepare(args):
 
     (csgo / "nuga").mkdir(exist_ok=True)
     target = csgo / "nuga" / f"{mid}.dem"
-    shutil.copyfile(demo, target)          # всегда перезаписываем — чтобы не осталась старая чужая демка
+    if target.exists():
+        target.unlink()
+    if demo.parent == OUT:
+        shutil.move(demo, target)          # временный распакованный файл — просто переносим
+    else:
+        shutil.copyfile(demo, target)      # всегда перезаписываем — чтобы не осталась старая чужая демка
 
     work = OUT / mid
     raw = work / "raw"
