@@ -16,7 +16,7 @@
     --win: #4ade80; --lose: #e0474c; --t: #e8b14a; --ct: #5b9dff;
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; overflow-x: hidden; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; overflow-x: hidden; }
   a { color: inherit; text-decoration: none; }
@@ -44,7 +44,7 @@
   .soon { font-size: 11px; font-weight: 700; background: rgba(255,255,255,.08); color: var(--muted); border-radius: 6px; padding: 2px 6px; }
 
   /* Первый экран */
-  .hero { position: relative; display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 72px 0 80px; }
+  .hero { position: relative; overflow-x: clip; overflow-y: visible; display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 72px 0 80px; }
   .hero::before { content: ""; position: absolute; inset: -120px -200px auto auto; width: 620px; height: 620px; z-index: -1;
                   background: radial-gradient(circle, rgba(45,212,191,.18), transparent 65%); }
   .tag { display: inline-flex; align-items: center; gap: 8px; background: rgba(45,212,191,.12); color: var(--accent);
@@ -120,12 +120,19 @@
 
   @media (max-width: 900px) {
     .hero { grid-template-columns: 1fr; padding: 40px 0 50px; }
-    .toast { right: -10px; top: -20px; }
+    .toast { right: 0; top: -20px; }
+    .hero::before { inset: -120px -40% auto auto; width: 100%; }
     .grid, .steps { grid-template-columns: 1fr; }
     .nav .links { display: none; }
   }
+  .hero > * { min-width: 0; }
   @media (max-width: 420px) {
-    .phone { width: 290px; }
+    .wrap { padding: 0 16px; }
+    .nav { gap: 12px; }
+    .logo { font-size: 17px; }
+    .lead { font-size: 17px; }
+    .phone { width: min(290px, 100%); }
+    .toast { width: 210px; }
     .cta .btn { width: 100%; justify-content: center; }
     .long { display: none; } .short { display: inline; }
   }
