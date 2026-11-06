@@ -206,14 +206,24 @@ def prepare(args):
     demo = Path(args.demo)
     if not demo.exists():
         sys.exit(f"Нет файла демки: {demo}")
+    if demo.suffix in (".gz", ".zst"):
+        from analyzer import prepare_demo
+        demo = prepare_demo(demo)
+
+    # Проверяем, что демка от этого же матча: название карты записано в начале файла .dem
+    want_map = str(data.get("map") or "")
+    with open(demo, "rb") as fh:
+        head = fh.read(64 * 1024)
+    if want_map and want_map.encode() not in head:
+        found = re.search(rb"(de|cs|ar)_[a-z0-9_]{3,20}", head)
+        sys.exit(f"Демка не от этого матча!\n"
+                 f"  Разбор {mid} — карта {want_map}\n"
+                 f"  Файл {args.demo} — карта {found.group().decode() if found else '?'}\n"
+                 f"Укажи в --demo ту демку, которую загружал на сайт для этого матча.")
+
     (csgo / "nuga").mkdir(exist_ok=True)
     target = csgo / "nuga" / f"{mid}.dem"
-    if not target.exists():
-        if demo.suffix in (".gz", ".zst"):
-            from analyzer import prepare_demo
-            shutil.copyfile(prepare_demo(demo), target)
-        else:
-            shutil.copyfile(demo, target)
+    shutil.copyfile(demo, target)          # всегда перезаписываем — чтобы не осталась старая чужая демка
 
     work = OUT / mid
     raw = work / "raw"
