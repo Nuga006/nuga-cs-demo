@@ -204,6 +204,12 @@ def match_summary(mid: str, data: dict) -> dict:
         "mvp": {"name": best["name"], "rating": best.get("rating")} if best else None,
         "teams": [[p["name"] for p in players if p["team"] == t] for t in teams],
         "highlights": len(data.get("replay", {}).get("highlights", [])),
+        # Подробности хайлайтов — для страницы «Клипы»: тип, игрок, раунд, тик
+        "hl": [
+            {"t": h.get("type"), "p": players[h["player"]]["name"] if 0 <= h.get("player", -1) < len(players) else "?",
+             "r": h.get("round"), "k": h.get("tick"), "d": h.get("detail", "")}
+            for h in data.get("replay", {}).get("highlights", [])
+        ],
         # Статистика каждого игрока — для раздела «Моя статистика» по всем матчам
         "stats": [
             {k: p.get(k) for k in STAT_FIELDS}
@@ -222,7 +228,7 @@ STAT_FIELDS = ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "ratin
                "noscope", "smoke", "wall", "blind", "plants", "defuses", "mvps", "clutch")
 
 ANALYZER_VERSION = 2   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
-META_VERSION = 3     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
+META_VERSION = 4     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
 
 
 def highlight_counts(data: dict, i: int) -> dict:

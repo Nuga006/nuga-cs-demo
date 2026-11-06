@@ -447,6 +447,28 @@
     .scard .vl { font-size: 28px; }
   }
 
+  /* Клипы */
+  .clipbar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 16px; }
+  .clipbar .seg { background: #15171d; border: 1px solid var(--line); border-radius: 12px; padding: 4px; display: inline-flex; gap: 2px; }
+  .clipbar .seg button { background: none; border: 0; color: var(--muted); font: inherit; font-weight: 700; padding: 7px 14px; border-radius: 9px; cursor: pointer; }
+  .clipbar .seg button.on { background: var(--accent); color: var(--on-accent); }
+  .cgal { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .clipc { background: #15171d; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; cursor: pointer; text-align: left;
+           color: var(--text); font: inherit; padding: 0; transition: .15s; display: flex; flex-direction: column; }
+  .clipc:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .clipc .thumb { position: relative; height: 132px; display: grid; place-items: center; overflow: hidden;
+                  background: radial-gradient(circle at 50% 120%, color-mix(in srgb, var(--mc) 45%, transparent), transparent 70%), #0f1116; }
+  .clipc .thumb .rad { position: absolute; inset: -20%; background-size: cover; background-position: center; opacity: .18; }
+  .clipc .thumb img.lg { position: relative; width: 84px; height: 84px; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+  .clipc .thumb .bd { position: absolute; left: 12px; top: 12px; font-size: 14px; font-weight: 800; border-radius: 8px; padding: 5px 10px;
+                      box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  .clipc .thumb .play { position: absolute; right: 12px; bottom: 12px; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+                        background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.18); font-size: 15px; }
+  .clipc:hover .play { background: var(--accent); color: var(--on-accent); }
+  .clipc .info { padding: 12px 14px 14px; }
+  .clipc .who { font-weight: 800; } .clipc .who.me { color: var(--accent); }
+  .clipc .det { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
   /* Рекорды */
   .recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
   .rec { position: relative; overflow: hidden; min-height: 168px; background: #15171d; border: 1px solid var(--line); border-radius: 20px;
@@ -542,12 +564,13 @@
     .sidenav .ni { font-size: 19px; width: auto; }
     .nmore { display: flex; align-items: center; background: none; border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
     /* Второстепенные разделы — в выпадающем «Ещё» */
-    .sidenav a[data-view="upload"], .sidenav a[data-view="compare"], .sidenav a[data-view="search"], .sidenav a[data-view="faq"] { display: none; }
-    .sidenav.more a[data-view="upload"], .sidenav.more a[data-view="compare"],
+    .sidenav a[data-view="upload"], .sidenav a[data-view="clips"], .sidenav a[data-view="compare"], .sidenav a[data-view="search"], .sidenav a[data-view="faq"] { display: none; }
+    .sidenav.more a[data-view="upload"], .sidenav.more a[data-view="clips"], .sidenav.more a[data-view="compare"],
     .sidenav.more a[data-view="search"], .sidenav.more a[data-view="faq"] {
       display: flex; position: fixed; right: 10px; width: 190px; flex-direction: row; gap: 10px; justify-content: flex-start;
       font-size: 15px; padding: 12px 14px; background: #1b1e26; border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
-    .sidenav.more a[data-view="upload"]  { bottom: calc(244px + env(safe-area-inset-bottom)); }
+    .sidenav.more a[data-view="upload"]  { bottom: calc(298px + env(safe-area-inset-bottom)); }
+    .sidenav.more a[data-view="clips"]   { bottom: calc(244px + env(safe-area-inset-bottom)); }
     .sidenav.more a[data-view="compare"] { bottom: calc(190px + env(safe-area-inset-bottom)); }
     .sidenav.more a[data-view="search"]  { bottom: calc(136px + env(safe-area-inset-bottom)); }
     .sidenav.more a[data-view="faq"]     { bottom: calc(82px + env(safe-area-inset-bottom)); }
@@ -687,6 +710,7 @@
     <a href="/app" data-view="matches"><span class="ni">▦</span>Матчи</a>
     <a href="/app/stats" data-view="stats"><span class="ni">▮▮</span>Статистика</a>
     <a href="/app/records" data-view="records"><span class="ni">🏆</span>Рекорды</a>
+    <a href="/app/clips" data-view="clips"><span class="ni">★</span>Клипы</a>
     <a href="/app/upload" data-view="upload"><span class="ni">⇪</span>Загрузить демо</a>
     <div class="nsep">Исследовать</div>
     <a href="/app/compare" data-view="compare"><span class="ni">⚔</span>Сравнение</a>
@@ -741,6 +765,19 @@
         <div class="psub">Личные рекорды по всем разобранным матчам. Нажмите на карточку, чтобы открыть матч.</div>
         <div class="psub" id="recSub"></div></div></div>
       <div class="recs" id="recs"></div>
+    </section>
+
+    <!-- Клипы -->
+    <section class="view" data-view="clips">
+      <div class="phead"><div><h1>Клипы</h1><div class="psub" id="clipSub">Все яркие моменты из ваших разобранных матчей</div></div></div>
+      <div class="clipbar">
+        <div class="seg" id="clipType">
+          <button data-t="all" class="on">Все</button><button data-t="ACE">ACE</button><button data-t="4K">4K</button>
+          <button data-t="3K">3K</button><button data-t="1v">Клатчи</button>
+        </div>
+        <div class="seg" id="clipWho"><button data-w="me" class="on">Мои</button><button data-w="all">Все игроки</button></div>
+      </div>
+      <div class="cgal" id="clipGrid"></div>
     </section>
 
     <!-- Сравнение -->
@@ -1056,8 +1093,8 @@ document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("cli
 }));
 
 // ---------- Разделы приложения (боковое меню) ----------
-const VIEWS = ["matches", "stats", "records", "upload", "compare", "search", "faq"];
-const VIEW_TITLES = { matches: "Матчи", stats: "Статистика", records: "Рекорды", upload: "Загрузить демо",
+const VIEWS = ["matches", "stats", "records", "clips", "upload", "compare", "search", "faq"];
+const VIEW_TITLES = { matches: "Матчи", stats: "Статистика", records: "Рекорды", clips: "Клипы", upload: "Загрузить демо",
                       compare: "Сравнение", search: "Поиск игрока", faq: "FAQ" };
 let VIEW = "matches";
 
@@ -1124,6 +1161,7 @@ async function loadHistory() {
     if (LAST_PLAYER) renderPlayer(LAST_PLAYER);   // обновить пометки «Разобран» в списке FACEIT
     renderMatchesPage();
     renderRecords();
+    renderClips();
   } catch {
     $("mTable").innerHTML = `<div class="mempty">Не удалось загрузить список матчей</div>`;
   }
@@ -1339,6 +1377,58 @@ function renderRecords() {
   }).join("");
   box.querySelectorAll(".rec[data-id]").forEach((c) => c.addEventListener("click", () => openMatch(c.dataset.id, true)));
 }
+
+// ---------- Клипы: все хайлайты из разобранных матчей ----------
+let CLIP_TYPE = "all", CLIP_WHO = "me";
+const CLIP_ORDER = { ACE: 0, "1v5": 1, "1v4": 2, "4K": 3, "1v3": 4, "3K": 5, "1v2": 6, "1v1": 7 };
+
+function renderClips() {
+  const box = $("clipGrid");
+  if (!USER) { box.innerHTML = `<div class="note">Войдите через Steam, чтобы увидеть клипы своих матчей.</div>`; return; }
+  const all = [];
+  for (const m of MATCH_LIST) for (const h of m.hl || []) all.push({ m, h });
+  const mine = all.filter((c) => isMe(c.h.p));
+  let list = CLIP_WHO === "me" ? mine : all;
+  list = list.filter((c) => CLIP_TYPE === "all" || (CLIP_TYPE === "1v" ? c.h.t.startsWith("1v") : c.h.t === CLIP_TYPE));
+  list.sort((a, b) => b.m.created - a.m.created || (CLIP_ORDER[a.h.t] ?? 9) - (CLIP_ORDER[b.h.t] ?? 9));
+  $("clipSub").textContent = `${mine.length} ваших моментов · ${all.length} всего в ${MATCH_LIST.length} матчах`;
+
+  if (!list.length) {
+    box.innerHTML = `<div class="note">${all.length ? "Нет клипов под этот фильтр." :
+      "Пока нет клипов. Если матчи уже разобраны раньше — загрузите демку ещё раз, разбор обновится бесплатно."}</div>`;
+    return;
+  }
+  const badge = (t) => (t === "ACE" ? "ace" : t === "4K" ? "k4" : t === "3K" ? "k3" : "cl");
+  const date = (ts) => new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  box.innerHTML = list.slice(0, 120).map((c, i) => {
+    const map = encodeURIComponent(c.m.map);
+    return `<button class="clipc" data-i="${i}" style="--mc:${mapColor(c.m.map)}">` +
+      `<div class="thumb"><span class="rad" style="background-image:url('/static/maps/${map}.png')"></span>` +
+      `<img class="lg" src="/static/maps/icons/${map}.png" alt="" loading="lazy" onerror="this.remove()">` +
+      `<span class="bd ${badge(c.h.t)}">${esc(c.h.t)}</span><span class="play">▶</span></div>` +
+      `<div class="info"><div class="who ${isMe(c.h.p) ? "me" : ""}">${esc(c.h.p)}</div>` +
+      `<div class="det">${esc(mapTitle(c.m.map))} · раунд ${c.h.r + 1} · ${date(c.m.created)}</div></div></button>`;
+  }).join("");
+  box.querySelectorAll(".clipc").forEach((b) => b.addEventListener("click", () => openClip(list[+b.dataset.i])));
+}
+
+// Открыть матч и сразу запустить реплей этого момента
+async function openClip(c) {
+  await openMatch(c.m.id, true);
+  const h = (R.data?.replay?.highlights || []).find((x) => x.round === c.h.r && x.tick === c.h.k && x.type === c.h.t);
+  if (h) jumpTo(h);
+}
+
+$("clipType").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+  CLIP_TYPE = b.dataset.t;
+  $("clipType").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  renderClips();
+}));
+$("clipWho").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+  CLIP_WHO = b.dataset.w;
+  $("clipWho").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  renderClips();
+}));
 
 // ---------- Сравнение (до 5 игроков) ----------
 const CMP = { nicks: [], data: {}, errors: {} };
