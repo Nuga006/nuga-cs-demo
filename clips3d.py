@@ -18,6 +18,7 @@
 
 import argparse
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -215,6 +216,9 @@ def prepare(args):
     mid, data = load_match(args.match)
     types = {t.strip().upper().replace("V", "v") for t in args.types.split(",")} if args.types else None
     clips = build_clips(data, types, args.player, args.max)
+    for c in clips:                                   # ручная подстройка, если моменты съезжают
+        c["start"] += int(args.shift * TICKRATE)
+        c["end"] += int(args.shift * TICKRATE)
     if not clips:
         sys.exit("В этом матче нет подходящих хайлайтов (проверь --types / --player).")
 
@@ -225,6 +229,17 @@ def prepare(args):
     demo = Path(args.demo)
     if not demo.exists():
         sys.exit(f"Нет файла демки: {demo}")
+    # id матча — это отпечаток (sha256) именно того файла, который загружали на сайт
+    h = hashlib.sha256()
+    with open(demo, "rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(block)
+    if h.hexdigest()[:12] != mid:
+        print(f"ВНИМАНИЕ: файл {demo.name} — не тот, что загружали на сайт для матча {mid}\n"
+              f"(его отпечаток {h.hexdigest()[:12]}). Если это другой матч, моменты будут не те.\n"
+              f"Возьми демку, которую загружал на сайт, или загрузи этот файл на сайт и возьми его id.")
+        if input("Всё равно продолжить? (y/n): ").strip().lower() not in ("y", "д", "yes", "да"):
+            sys.exit(1)
     # Сжатую демку всегда распаковываем заново во временный файл
     # (рядом может лежать старый match.dem от другого матча — его брать нельзя)
     if demo.suffix in (".gz", ".zst"):
@@ -383,6 +398,7 @@ def main():
     p.add_argument("--types", help="например ACE,4K,1v3 (по умолчанию все)")
     p.add_argument("--max", type=int, help="не больше N самых крутых моментов")
     p.add_argument("--fps", type=int, default=60)
+    p.add_argument("--shift", type=float, default=0, help="сдвинуть все моменты на N секунд (+ позже, − раньше)")
     p.add_argument("--hud", choices=["killfeed", "full", "none"], default="killfeed",
                    help="что оставить на экране (по умолчанию только киллфид)")
     p.set_defaults(func=prepare)
