@@ -550,12 +550,12 @@ def analyze_demo(demo_path: Path) -> dict:
     rounds = build_rounds(parser)
     num_rounds = max(len(rounds), 1)
 
-    # Всё, что было до первого настоящего раунда (рестарт после разминки, отсчёт «LIVE»),
-    # FACEIT и сама игра не засчитывают — иначе у игрока появляются лишние убийства.
+    # FACEIT не засчитывает то, что было до первого раунда (рестарт, отсчёт «LIVE»)
+    # и после конца последнего раунда — когда матч уже выигран, а стрелять ещё можно.
     if rounds:
-        first = rounds[0]["start"]
-        deaths = deaths[deaths["tick"] >= first]
-        hurts = hurts[hurts["tick"] >= first]
+        first, last = rounds[0]["start"], rounds[-1]["end"]
+        deaths = deaths[(deaths["tick"] >= first) & (deaths["tick"] <= last)]
+        hurts = hurts[(hurts["tick"] >= first) & (hurts["tick"] <= last)]
 
     # SteamID всегда как строки
     for df in (deaths, hurts):

@@ -21,7 +21,14 @@ deaths = drop_warmup(parser.parse_event("player_death", player=["team_num"], oth
 for col in ("attacker_steamid", "user_steamid", "assister_steamid"):
     if col in deaths.columns:
         deaths[col] = deaths[col].astype(str)
-names = {str(r.steamid): r.name for r in parser.parse_player_info().itertuples()}
+names = {}
+for r in parser.parse_player_info().itertuples():
+    names.setdefault(str(r.steamid), r.name)
+for col, ncol in (("attacker_steamid", "attacker_name"), ("user_steamid", "user_name")):
+    if ncol in deaths.columns:
+        for sid, nm in zip(deaths[col], deaths[ncol]):
+            if sid not in ("None", "nan", "0"):
+                names.setdefault(sid, str(nm))
 
 
 def phase(tick: int) -> str:
@@ -30,7 +37,7 @@ def phase(tick: int) -> str:
     for r in rounds:
         if r["start"] <= tick <= r["end"]:
             return "in"
-    return "post"
+    return "end" if tick > rounds[-1]["end"] else "post"
 
 
 deaths["phase"] = deaths["tick"].map(phase)
@@ -39,9 +46,9 @@ self_kill = deaths["attacker_steamid"] == deaths["user_steamid"]
 enemy = ~same & ~self_kill
 flash = deaths["assistedflash"].fillna(False).astype(bool) if "assistedflash" in deaths.columns else pd.Series(False, index=deaths.index)
 
-print("pre = до 1-го раунда, in = внутри раунда, post = после конца раунда")
+print("pre = до 1-го раунда, in = внутри раунда, post = после конца раунда, end = после конца матча")
 print("TK = убил своего, byTM = умер от своего, A_fl = флеш-ассисты, A_TK = ассист при убийстве своего\n")
-cols = ["K_pre", "K_in", "K_post", "TK", "D_pre", "D_in", "D_post", "byTM", "A_pre", "A_in", "A_post", "A_fl", "A_TK"]
+cols = ["K_pre", "K_in", "K_post", "K_end", "TK", "D_pre", "D_in", "D_post", "D_end", "byTM", "A_pre", "A_in", "A_post", "A_fl", "A_TK"]
 print(f"{'Игрок':<16}" + "".join(f"{c:>7}" for c in cols))
 for sid, name in names.items():
     k = deaths[enemy & (deaths["attacker_steamid"] == sid)]
@@ -49,9 +56,9 @@ for sid, name in names.items():
     a = deaths[deaths["assister_steamid"] == sid]
     if k.empty and d.empty:
         continue
-    vals = [(k.phase == "pre").sum(), (k.phase == "in").sum(), (k.phase == "post").sum(),
+    vals = [(k.phase == "pre").sum(), (k.phase == "in").sum(), (k.phase == "post").sum(), (k.phase == "end").sum(),
             (same & ~self_kill & (deaths["attacker_steamid"] == sid)).sum(),
-            (d.phase == "pre").sum(), (d.phase == "in").sum(), (d.phase == "post").sum(),
+            (d.phase == "pre").sum(), (d.phase == "in").sum(), (d.phase == "post").sum(), (d.phase == "end").sum(),
             (same[d.index] & ~self_kill[d.index]).sum(),
             (a.phase == "pre").sum(), (a.phase == "in").sum(), (a.phase == "post").sum(),
             int(flash[a.index].sum()), int(same[a.index].sum())]
