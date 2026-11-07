@@ -142,54 +142,73 @@ def build_clips(data: dict, types: set[str] | None, player: str | None, limit: i
 
 # ---------- 2. конфиг для CS2 ----------
 
-def cmd(f, tick: int, command: str):
-    # mirv_cmd выполнит команду, когда демка дойдёт до этого тика
-    f.write(f'mirv_cmd addAtTick {int(tick)} "{command}"\n')
+def spec_cmds(acc: int) -> str:
+    # Камера от лица игрока. Несколько способов — какой-то сработает в текущей версии CS2.
+    return f"spec_player_by_accountid {acc}; spec_lock_to_accountid {acc}; spec_mode 1"
 
 
-def write_cfg(path: Path, demo_rel: str, clips: list[dict], fps: int, take_dir: str, hud: str):
-    with open(path, "w", encoding="utf-8", newline="\r\n") as f:
-        f.write("// Nuga CS Demo — автозапись 3D-хайлайтов. Создано clips3d.py, править не нужно.\n")
-        f.write("// Запуск: CS2 через HLAE → консоль → exec nuga_clips\n\n")
-        f.write("mirv_cmd clear\n")
-        f.write("mirv_cmd enabled 1\n\n")
+def write_cfg(cfg_dir: Path, demo_rel: str, clips: list[dict], fps: int, take_dir: str, hud: str):
+    """Пишет конфиги в game/csgo/cfg:
+    nuga_clips.cfg — настройки, клавиши F6/F7 и открытие демки;
+    nuga_h<N>.cfg  — перемотка к хайлайту N (F7 — следующий);
+    nuga_go.cfg    — запись всех хайлайтов подряд (F6)."""
+    def w(name: str, lines: list[str]):
+        with open(cfg_dir / name, "w", encoding="utf-8", newline="\r\n") as f:
+            f.write("\n".join(lines) + "\n")
 
-        f.write("// --- запись: HLAE + встроенный ffmpeg-профиль ---\n")
-        f.write(f'mirv_streams record name "{take_dir}"\n')
-        f.write(f"mirv_streams record fps {fps}\n")
-        f.write("mirv_streams record screen enabled 1\n")
-        f.write("mirv_streams record screen settings afxFfmpegYuv420p\n")
-        f.write("mirv_streams record startMovieWav 1\n\n")
+    hud_line = ("cl_draw_only_deathnotices 1" if hud == "killfeed" else
+                "cl_drawhud 0" if hud == "none" else "cl_draw_only_deathnotices 0")
+    w("nuga_clips.cfg", [
+        "// Nuga CS Demo. Создано clips3d.py. Запуск: консоль CS2 -> exec nuga_clips",
+        f'mirv_streams record name "{take_dir}"',
+        f"mirv_streams record fps {fps}",
+        "mirv_streams record screen enabled 1",
+        "mirv_streams record screen settings afxFfmpegYuv420p",
+        "mirv_streams record startMovieWav 1",
+        "demo_timescale 1",
+        "spec_show_xray 0",
+        hud_line,
+        "volume 0.6",
+        'bind "F7" "exec nuga_h1"',
+        'bind "F6" "exec nuga_go"',
+        f'playdemo "{demo_rel}"',
+    ])
 
-        f.write("// --- картинка ---\n")
-        f.write("demo_timescale 1\n")
-        f.write("spec_show_xray 0\n")
-        f.write("cl_draw_only_deathnotices 1\n" if hud == "killfeed" else
-                "cl_drawhud 0\n" if hud == "none" else "cl_draw_only_deathnotices 0\n")
-        f.write("volume 0.6\n\n")
+    # F7: прыжок к хайлайту. Каждый файл перевешивает F7 на следующий (по кругу).
+    n = len(clips)
+    for i, c in enumerate(clips):
+        acc = int(c["steamid"]) - STEAM64_BASE
+        land = c["start"] - 2 * TICKRATE
+        nxt = i + 2 if i + 1 < n else 1
+        w(f"nuga_h{i + 1}.cfg", [
+            "mirv_cmd clear",
+            "mirv_cmd enabled 1",
+            f"demo_gototick {land}",
+            "demo_resume",
+            # камеру ставим чуть позже прыжка — когда игра уже прогрузит игроков
+            f'mirv_cmd addAtTick {land + 16} "{spec_cmds(acc)}"',
+            f'mirv_cmd addAtTick {c["start"] - 16} "{spec_cmds(acc)}"',
+            f'echo "NUGA {i + 1}/{n}: round {c["round"] + 1} {"+".join(c["types"])} {c["name"]}  (F7 - next)"',
+            f'bind "F7" "exec nuga_h{nxt}"',
+        ])
 
-        f.write("// --- расписание ---\n")
-        first_jump = 160      # через ~2.5 с после загрузки демки прыгаем к первому моменту
-        for i, c in enumerate(clips):
-            acc = int(c["steamid"]) - STEAM64_BASE
-            land = c["start"] - 2 * TICKRATE          # приземляемся за 2 с, чтобы игра успела прогрузить игроков
-            jump_at = first_jump if i == 0 else clips[i - 1]["end"] + 8
-            f.write(f"\n// #{i + 1}  раунд {c['round'] + 1}  {'+'.join(c['types'])}  {c['name']}"
-                    f"  ({(c['end'] - c['start']) / TICKRATE:.0f} с)\n")
-            cmd(f, jump_at, f"demo_gototick {land}")
-            # Камера от лица игрока. Пишем несколько способов — какой-то сработает в текущей версии CS2.
-            for t in (land + 16, c["start"] - 16):
-                cmd(f, t, f"spec_player_by_accountid {acc}")
-                cmd(f, t, f"spec_lock_to_accountid {acc}")
-                cmd(f, t, "spec_mode 1")
-            cmd(f, c["start"], f"echo NUGA clip {i + 1}/{len(clips)} {c['file']}")
-            cmd(f, c["start"], "mirv_streams record start")
-            cmd(f, c["end"], "mirv_streams record end")
-
-        last = clips[-1]["end"] + 32
-        cmd(f, last, "echo NUGA: ALL CLIPS DONE - run: python clips3d.py finish")
-        cmd(f, last + 32, "disconnect")
-        f.write(f'\nplaydemo "{demo_rel}"\n')
+    # F6: запись всего подряд. Расписание ставится уже после загрузки демки — так оно не сбрасывается.
+    lines = ["mirv_cmd clear", "mirv_cmd enabled 1"]
+    for i, c in enumerate(clips):
+        acc = int(c["steamid"]) - STEAM64_BASE
+        land = c["start"] - 2 * TICKRATE
+        if i == 0:
+            lines += [f"demo_gototick {land}", "demo_resume"]          # к первому — сразу
+        else:
+            lines.append(f'mirv_cmd addAtTick {clips[i - 1]["end"] + 8} "demo_gototick {land}; demo_resume"')
+        for t in (land + 16, c["start"] - 16):
+            lines.append(f'mirv_cmd addAtTick {t} "{spec_cmds(acc)}"')
+        lines.append(f'mirv_cmd addAtTick {c["start"]} "echo NUGA rec {i + 1}/{n} {c["file"]}; mirv_streams record start"')
+        lines.append(f'mirv_cmd addAtTick {c["end"]} "mirv_streams record end"')
+    last = clips[-1]["end"] + 32
+    lines.append(f'mirv_cmd addAtTick {last} "echo NUGA: ALL CLIPS DONE - run: python clips3d.py finish; disconnect"')
+    lines.append('echo "NUGA: recording started, do not touch anything"')
+    w("nuga_go.cfg", lines)
 
 
 def prepare(args):
@@ -247,7 +266,9 @@ def prepare(args):
     raw.mkdir(parents=True)
 
     cfg = csgo / "cfg" / "nuga_clips.cfg"
-    write_cfg(cfg, f"nuga/{mid}", clips, args.fps, raw.resolve().as_posix(), args.hud)
+    for old in (csgo / "cfg").glob("nuga_h*.cfg"):
+        old.unlink()
+    write_cfg(csgo / "cfg", f"nuga/{mid}", clips, args.fps, raw.resolve().as_posix(), args.hud)
     (work / "manifest.json").write_text(json.dumps(
         {"match": mid, "map": data.get("map"), "fps": args.fps, "clips": clips},
         ensure_ascii=False, indent=2), encoding="utf-8")
@@ -260,10 +281,10 @@ def prepare(args):
     print(f"\nКонфиг: {cfg}")
     print(f"Демка:  {target}")
     print("\nДальше:")
-    print("  1. Открой HLAE → File → Launch CS2 (в Launch options можно добавить -novid -insecure -w 1920 -h 1080)")
-    print("  2. В CS2 открой консоль (~) и введи:  exec nuga_clips")
-    print("  3. Не трогай мышь, пока в консоли не появится «NUGA: ALL CLIPS DONE»")
-    print(f"  4. python clips3d.py finish --match {mid}")
+    print("  1. HLAE -> File -> Launch CS2, в консоли CS2:  exec nuga_clips")
+    print("  2. Когда демка откроется:  F7 — следующий хайлайт (камера на игроке)")
+    print("                             F6 — записать все хайлайты подряд (ничего не трогать до ALL CLIPS DONE)")
+    print(f"  3. Собрать видео: python clips3d.py finish --match {mid}")
 
 
 # ---------- 3. сборка роликов ----------

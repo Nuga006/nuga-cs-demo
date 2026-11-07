@@ -105,9 +105,9 @@ python clips3d.py prepare --match 1a2b3c4d5e6f --demo "D:\demos\match.dem.zst"
 python clips3d.py prepare --match 1a2b3c4d5e6f --demo match.dem --player Nuga006 --types ACE,4K,1v3 --max 5
 ```
 
-2. Запусти CS2 через HLAE (**File → Launch CS2**), открой консоль `~` и введи `exec nuga_clips`.
-   Игра сама откроет демку, перемотает к каждому моменту и запишет его. Не трогай мышь,
-   пока в консоли не появится `NUGA: ALL CLIPS DONE`.
+2. Запусти CS2 через HLAE (**File → Launch CS2**), открой консоль `~` и введи `exec nuga_clips` — откроется демка.
+   - **F7** — перемотка к следующему хайлайту, камера от лица игрока (по кругу)
+   - **F6** — записать все хайлайты подряд. Не трогай ничего, пока в консоли не появится `NUGA: ALL CLIPS DONE`.
 
 3. Собрать ролики:
 
