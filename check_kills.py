@@ -26,27 +26,33 @@ names = {str(r.steamid): r.name for r in parser.parse_player_info().itertuples()
 
 def phase(tick: int) -> str:
     if tick < rounds[0]["start"]:
-        return "до 1-го раунда"
+        return "pre"
     for r in rounds:
         if r["start"] <= tick <= r["end"]:
-            return "в раунде"
-    return "после конца раунда"
+            return "in"
+    return "post"
 
 
 deaths["phase"] = deaths["tick"].map(phase)
-enemy = (deaths["attacker_steamid"] != deaths["user_steamid"]) & (deaths["attacker_team_num"] != deaths["user_team_num"])
+same = deaths["attacker_team_num"] == deaths["user_team_num"]
+self_kill = deaths["attacker_steamid"] == deaths["user_steamid"]
+enemy = ~same & ~self_kill
 flash = deaths["assistedflash"].fillna(False).astype(bool) if "assistedflash" in deaths.columns else pd.Series(False, index=deaths.index)
 
-print("\nВсего событий по периодам:")
-print(deaths["phase"].value_counts().to_string())
-
-print(f"\n{'Игрок':<18}{'K в раунде':>11}{'K вне':>7}{'D в раунде':>11}{'D вне':>7}{'A':>4}{'A флеш':>8}")
+print("pre = до 1-го раунда, in = внутри раунда, post = после конца раунда")
+print("TK = убил своего, byTM = умер от своего, A_fl = флеш-ассисты, A_TK = ассист при убийстве своего\n")
+cols = ["K_pre", "K_in", "K_post", "TK", "D_pre", "D_in", "D_post", "byTM", "A_pre", "A_in", "A_post", "A_fl", "A_TK"]
+print(f"{'Игрок':<16}" + "".join(f"{c:>7}" for c in cols))
 for sid, name in names.items():
     k = deaths[enemy & (deaths["attacker_steamid"] == sid)]
     d = deaths[deaths["user_steamid"] == sid]
     a = deaths[deaths["assister_steamid"] == sid]
     if k.empty and d.empty:
         continue
-    print(f"{name[:17]:<18}{(k.phase == 'в раунде').sum():>11}{(k.phase != 'в раунде').sum():>7}"
-          f"{(d.phase == 'в раунде').sum():>11}{(d.phase != 'в раунде').sum():>7}"
-          f"{len(a):>4}{int(flash[a.index].sum()):>8}")
+    vals = [(k.phase == "pre").sum(), (k.phase == "in").sum(), (k.phase == "post").sum(),
+            (same & ~self_kill & (deaths["attacker_steamid"] == sid)).sum(),
+            (d.phase == "pre").sum(), (d.phase == "in").sum(), (d.phase == "post").sum(),
+            (same[d.index] & ~self_kill[d.index]).sum(),
+            (a.phase == "pre").sum(), (a.phase == "in").sum(), (a.phase == "post").sum(),
+            int(flash[a.index].sum()), int(same[a.index].sum())]
+    print(f"{name[:15]:<16}" + "".join(f"{int(v):>7}" for v in vals))
