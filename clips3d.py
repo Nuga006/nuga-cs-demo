@@ -269,6 +269,7 @@ def prepare(args):
 # ---------- 3. сборка роликов ----------
 
 VIDEO_EXT = (".mp4", ".mkv", ".mov", ".avi")
+IMAGE_EXT = (".tga", ".bmp", ".png", ".jpg", ".exr")
 
 
 def ffmpeg_bin() -> str:
@@ -304,13 +305,26 @@ def finish(args):
 
     done = []
     for c, take in zip(clips, takes):
-        video = next((p for p in sorted(take.rglob("*")) if p.suffix.lower() in VIDEO_EXT), None)
-        audio = next((p for p in sorted(take.rglob("*.wav"))), None)
-        if not video:
-            print(f"  ! {take.name}: нет видеофайла, пропускаю")
-            continue
+        files = sorted(p for p in take.rglob("*") if p.is_file())
+        video = next((p for p in files if p.suffix.lower() in VIDEO_EXT), None)
+        audio = next((p for p in files if p.suffix.lower() == ".wav"), None)
+        images = [p for p in files if p.suffix.lower() in IMAGE_EXT]
         out = work / c["file"]
-        cmdline = [ff, "-y", "-loglevel", "error", "-i", str(video)]
+        if video:
+            src = ["-i", str(video)]
+        elif images:
+            # HLAE без ffmpeg пишет кадры картинками: 00000.tga, 00001.tga, …
+            first = images[0]
+            if not first.stem.isdigit():
+                print(f"  ! {take.name}: не понял имена кадров ({first.name}), пропускаю")
+                continue
+            pattern = first.parent / f"%0{len(first.stem)}d{first.suffix}"
+            src = ["-framerate", str(man["fps"]), "-start_number", str(int(first.stem)), "-i", str(pattern)]
+        else:
+            what = ", ".join(sorted({p.suffix or p.name for p in files})) or "пусто"
+            print(f"  ! {take.name}: нет ни видео, ни кадров (в папке: {what}), пропускаю")
+            continue
+        cmdline = [ff, "-y", "-loglevel", "error", *src]
         if audio:
             cmdline += ["-i", str(audio), "-map", "0:v:0", "-map", "1:a:0", "-shortest"]
         cmdline += ["-c:v", "libx264", "-preset", "medium", "-crf", str(args.crf), "-pix_fmt", "yuv420p",
