@@ -335,7 +335,7 @@ STAT_FIELDS = ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "ratin
                "rounds", "k2", "k3", "k4", "k5", "trades", "traded", "shots", "hits",
                "noscope", "smoke", "wall", "blind", "plants", "defuses", "mvps", "clutch")
 
-ANALYZER_VERSION = 4   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
+ANALYZER_VERSION = 5   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
 META_VERSION = 4     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
 
 

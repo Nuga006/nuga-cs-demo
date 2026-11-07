@@ -85,6 +85,28 @@ def build_rounds(parser: DemoParser) -> list[dict]:
     return rounds
 
 
+def counted_ticks(parser: DemoParser, rounds: list[dict]):
+    """Возвращает проверку «засчитывается ли событие в этот тик», как в статистике FACEIT:
+    - не до первого раунда и не после конца последнего (матч уже выигран);
+    - не в прерванном раунде: если раунд начали, а потом откатили (пауза, восстановление бэкапа),
+      у него есть начало (конец закупки), но нет своего конца — сервер возвращает статистику назад.
+    Фраги сразу после конца обычного раунда (до следующей закупки) остаются — игра их считает."""
+    freeze = drop_warmup(parser.parse_event("round_freeze_end", other=["is_warmup_period"]))
+    starts = sorted(int(t) for t in freeze["tick"]) if not freeze.empty else []
+    real = {r["start"] for r in rounds}
+    first, last = rounds[0]["start"], rounds[-1]["end"]
+    aborted = []
+    for i, t in enumerate(starts):
+        if first < t < last and t not in real:
+            nxt = next((x for x in starts[i + 1:] if x > t), last)
+            aborted.append((t, nxt))
+
+    def keep(tick) -> bool:
+        tick = int(tick)
+        return first <= tick <= last and not any(a <= tick < b for a, b in aborted)
+    return keep
+
+
 def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
                  kills: pd.DataFrame, deaths: pd.DataFrame) -> dict:
     """Собираем позиции игроков по кадрам для каждого раунда."""
@@ -550,12 +572,11 @@ def analyze_demo(demo_path: Path) -> dict:
     rounds = build_rounds(parser)
     num_rounds = max(len(rounds), 1)
 
-    # FACEIT не засчитывает то, что было до первого раунда (рестарт, отсчёт «LIVE»)
-    # и после конца последнего раунда — когда матч уже выигран, а стрелять ещё можно.
+    # Убираем то, что FACEIT не засчитывает: до старта, после конца матча и в откаченных раундах
     if rounds:
-        first, last = rounds[0]["start"], rounds[-1]["end"]
-        deaths = deaths[(deaths["tick"] >= first) & (deaths["tick"] <= last)]
-        hurts = hurts[(hurts["tick"] >= first) & (hurts["tick"] <= last)]
+        keep = counted_ticks(parser, rounds)
+        deaths = deaths[deaths["tick"].map(keep)]
+        hurts = hurts[hurts["tick"].map(keep)]
 
     # SteamID всегда как строки
     for df in (deaths, hurts):
