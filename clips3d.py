@@ -343,7 +343,7 @@ def finish(args):
         lst.unlink()
         print(f"  ✓ {montage.name} — все моменты подряд")
 
-    if not args.keep_raw and done:
+    if not args.keep_raw and done and len(done) == len(clips):     # сырые записи удаляем, только если всё собралось
         shutil.rmtree(work / "raw", ignore_errors=True)
     print(f"\nГотово: {work}")
 
