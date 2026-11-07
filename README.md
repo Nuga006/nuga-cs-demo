@@ -91,43 +91,6 @@ cloudflared tunnel --url http://localhost:8000
 В терминале появится адрес вида `https://....trycloudflare.com`. При каждом запуске он новый.
 Не публикуйте ссылку открыто: поиск FACEIT идёт через ваш ключ, а демки разбираются на вашем компьютере.
 
-## 3D-клипы из CS2
-
-`clips3d.py` записывает хайлайты матча (ACE, 4K, 3K, клатчи) прямо из игры — от лица игрока, с настоящей
-графикой CS2. Нужен компьютер на Windows с **CS2**, [HLAE](https://www.advancedfx.org/) и
-[ffmpeg](https://www.gyan.dev/ffmpeg/builds/) (в PATH). Матч сначала разбирается на сайте как обычно.
-
-```bash
-# 1. Сделать сценарий записи (id — из ссылки /match/<id>)
-python clips3d.py prepare --match 1a2b3c4d5e6f --demo "D:\demos\match.dem.zst"
-
-#    только свои моменты / только лучшее:
-python clips3d.py prepare --match 1a2b3c4d5e6f --demo match.dem --player Nuga006 --types ACE,4K,1v3 --max 5
-```
-
-2. Запусти CS2 через HLAE (**File → Launch CS2**), открой консоль `~` и введи `exec nuga_clips` — откроется демка.
-   - **F7** — перемотка к следующему хайлайту, камера от лица игрока (по кругу)
-   - **F6** — записать все хайлайты подряд. Не трогай ничего, пока в консоли не появится `NUGA: ALL CLIPS DONE`.
-
-3. Собрать ролики:
-
-```bash
-python clips3d.py finish --match 1a2b3c4d5e6f
-```
-
-Готовые файлы — в `clips3d/<id>/`: по клипу на момент (`01_R07_ACE_Nuga006.mp4`) и `montage.mp4` со всеми подряд.
-
-Параметры `prepare`: `--cs2` (папка игры, если не стандартная), `--fps 60`, `--hud killfeed|full|none`.
-Сколько секунд брать до и после момента — константы `PRE_*` / `POST_*` в начале `clips3d.py`.
-
-**Если не работает**
-- *Камера не на том игроке* — Valve время от времени ломает команды наблюдателя в демках.
-  Скрипт пробует `spec_player_by_accountid` и `spec_lock_to_accountid`; если оба не сработали, обнови HLAE
-  (в нём есть свой `mirv_script_spec_lock`) или переключайся на игрока цифрами 1–0 вручную.
-- *Нет папок `take0000…` в `clips3d/<id>/raw`* — HLAE не записал: проверь, что CS2 запущена именно через HLAE
-  и HLAE свежий (после обновлений CS2 его надо обновлять).
-- *Момент начинается не там* — поменяй `PRE_*` / `POST_*` или сдвинь тики в `nuga_clips.cfg`.
-
 ## Настройки
 
 В начале `app.py`:
@@ -147,7 +110,6 @@ python clips3d.py finish --match 1a2b3c4d5e6f
 | `app.py` | Сервер на FastAPI: загрузка демок, сохранение матчей, FACEIT API, вход через Steam, монеты |
 | `static/landing.html` | Главная страница |
 | `static/index.html` | Приложение: матчи, статистика, страница матча, реплей, клипы |
-| `clips3d.py` | 3D-клипы хайлайтов из CS2 через HLAE + ffmpeg |
 | `analyze.py` | Первая версия анализа для терминала: `python analyze.py match.dem.zst` |
 
 Не входят в репозиторий (`.gitignore`):
@@ -158,7 +120,6 @@ python clips3d.py finish --match 1a2b3c4d5e6f
 | `nuga.db` | База пользователей и монет (SQLite) |
 | `matches/` | Сохранённые разборы |
 | `static/maps/` | Радары карт из awpy |
-| `clips3d/` | Записи и готовые 3D-клипы |
 | демки `*.dem*` | Большие файлы |
 
 ## Технологии
@@ -180,7 +141,7 @@ Python, FastAPI, SQLite, [demoparser2](https://github.com/LaihoE/demoparser), pa
 - [x] Вход через Steam, аккаунты и монеты
 - [ ] Постоянный сайт на сервере 24/7
 - [ ] Автоимпорт демок через FACEIT Downloads API (заявка на рассмотрении)
-- [x] Автоматические клипы из CS2 (`clips3d.py`, нужен ПК с CS2)
+- [ ] Автоматические клипы из CS2
 - [ ] Покупка монет
 
 ---
