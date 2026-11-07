@@ -107,6 +107,11 @@ with closing(db()) as _con, _con:
             added    INTEGER NOT NULL,
             PRIMARY KEY (steam_id, match_id)
         );
+        CREATE TABLE IF NOT EXISTS free_reanalysis (
+            steam_id TEXT NOT NULL,
+            match_id TEXT NOT NULL,
+            PRIMARY KEY (steam_id, match_id)
+        );
     """)
 
 
@@ -400,6 +405,8 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
             add_user_match(steam_id, mid)
             return saved_match_response(mid)
         upgrade = (MATCHES / f"{mid}.json.gz").exists()     # разбор есть, но старой версии — переразберём бесплатно
+        retry = has_free_reanalysis(steam_id, mid)          # сам удалил разбор — повтор тоже бесплатно
+        upgrade = upgrade or retry
         faceit_id = faceit_id or (old or {}).get("faceit_id")
         if not upgrade and get_user(steam_id)["coins"] < ANALYSIS_PRICE:
             raise HTTPException(402, f"Не хватает монет: разбор стоит {ANALYSIS_PRICE}. Заберите ежедневный бонус!")
@@ -417,6 +424,8 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             meta["created"] = old.get("created", meta["created"])    # дата разбора остаётся прежней
             write_meta(mid, meta)
+        if retry:
+            use_free_reanalysis(steam_id, mid)
         if not upgrade:
             change_coins(steam_id, -ANALYSIS_PRICE, f"Разбор матча {data.get('map', '')}")
         add_user_match(steam_id, mid)
@@ -480,6 +489,41 @@ def list_matches(request: Request):
         except (OSError, ValueError):
             continue
     return sorted(metas, key=lambda m: m.get("created", 0), reverse=True)[:200]
+
+
+def has_free_reanalysis(steam_id: str, mid: str) -> bool:
+    """Пользователь удалил свой разбор и загружает ту же демку снова — монеты не берём (один раз)."""
+    with closing(db()) as con:
+        return con.execute("SELECT 1 FROM free_reanalysis WHERE steam_id = ? AND match_id = ?",
+                           (steam_id, mid)).fetchone() is not None
+
+
+def use_free_reanalysis(steam_id: str, mid: str) -> None:
+    with closing(db()) as con, con:
+        con.execute("DELETE FROM free_reanalysis WHERE steam_id = ? AND match_id = ?", (steam_id, mid))
+
+
+@app.delete("/api/match/{mid}")
+def delete_match(mid: str, request: Request):
+    """Удалить разбор, чтобы загрузить демку заново. Удалять может тот, кто его загрузил или играл в матче.
+    Повторная загрузка той же демки будет бесплатной."""
+    steam_id = require_login(request)
+    meta_path = MATCHES / f"{mid}.meta.json"
+    if not MATCH_ID.fullmatch(mid) or not meta_path.exists():
+        raise HTTPException(404, "Матч не найден")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    nick = (get_user(steam_id).get("faceit") or "").lower()
+    with closing(db()) as con:
+        mine = con.execute("SELECT 1 FROM user_matches WHERE steam_id = ? AND match_id = ?", (steam_id, mid)).fetchone()
+    played = bool(nick) and any(str(p.get("name", "")).lower() == nick for p in meta.get("stats", []))
+    if not mine and not played:
+        raise HTTPException(403, "Удалить можно только свой разбор")
+    (MATCHES / f"{mid}.json.gz").unlink(missing_ok=True)
+    meta_path.unlink(missing_ok=True)
+    with closing(db()) as con, con:
+        con.execute("DELETE FROM user_matches WHERE match_id = ?", (mid,))
+        con.execute("INSERT OR IGNORE INTO free_reanalysis (steam_id, match_id) VALUES (?, ?)", (steam_id, mid))
+    return {"ok": True}
 
 
 def require_login(request: Request) -> str:

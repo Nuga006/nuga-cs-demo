@@ -398,6 +398,9 @@
   .abtn.ghost { background: #262a33; color: var(--text); } .abtn.ghost:hover { background: #303540; }
   .hlchip { border: 1px solid rgba(45,212,191,.5); color: var(--accent); border-radius: 8px; padding: 3px 9px; font-size: 13px; font-weight: 700; }
   .chev { color: var(--muted); font-size: 22px; line-height: 1; }
+  .delbtn { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 4px 6px; border-radius: 8px; opacity: .55; }
+  .delbtn:hover { opacity: 1; color: var(--lose); background: rgba(239,68,68,.12); }
+  .chip.btn.del:hover { border-color: var(--lose); color: var(--lose); }
   .mempty { padding: 44px 20px; text-align: center; color: var(--muted); }
 
   /* Статистика */
@@ -1308,7 +1311,8 @@ function renderMatchesPage() {
         `<div class="rb"><i style="width:${Math.min(100, (r.rating / 2) * 100)}%;background:${r.rating >= 1.1 ? "var(--win)" : r.rating < 0.9 ? "var(--lose)" : "#8f86f0"}"></i></div>`
       : `<span class="none">—</span>`;
     const acts = r.saved
-      ? `${r.hl ? `<span class="hlchip" title="Хайлайтов в матче">★ ${r.hl}</span>` : ""}<span class="chev">›</span>`
+      ? `${r.hl ? `<span class="hlchip" title="Хайлайтов в матче">★ ${r.hl}</span>` : ""}` +
+        `<button class="delbtn" data-del="${esc(r.saved.id)}" title="Удалить разбор, чтобы загрузить демку заново">🗑</button><span class="chev">›</span>`
       : `<button class="abtn imp" data-fid="${esc(r.fid)}" title="Выберите скачанную демку этого матча">Загрузить · 2 <span class="coin"></span></button>` +
         `<a class="abtn ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Комната ↗</a>`;
     return `<div class="mtr ${r.won === true ? "win" : r.won === false ? "lose" : ""}${r.saved ? " done" : ""}"${r.saved ? ` data-id="${esc(r.saved.id)}"` : ""}>` +
@@ -1338,6 +1342,10 @@ function renderMatchesPage() {
   box.innerHTML = html;
 
   box.querySelectorAll(".mtr.done").forEach((row) => row.addEventListener("click", () => openMatch(row.dataset.id, true)));
+  box.querySelectorAll(".delbtn").forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    deleteMatch(b.dataset.del);
+  }));
   box.querySelectorAll(".abtn.imp").forEach((b) => b.addEventListener("click", (e) => {
     e.stopPropagation();
     ROW_FACEIT_ID = b.dataset.fid;
@@ -1891,6 +1899,20 @@ function showMatch(data, push) {
   window.scrollTo({ top: 0 });
 }
 
+// Удалить разбор: матч станет «неразобранным», ту же демку можно загрузить снова бесплатно
+async function deleteMatch(id) {
+  if (!confirm("Удалить разбор этого матча?\n\nМатч вернётся в «Неразобранные». Ту же демку можно будет загрузить заново бесплатно.")) return;
+  try {
+    const res = await fetch(`/api/match/${encodeURIComponent(id)}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `Ошибка сервера (${res.status})`);
+    if (location.pathname === `/match/${id}`) showView("matches");
+    await loadHistory();
+  } catch (err) {
+    alert(`Не удалось удалить: ${err.message}`);
+  }
+}
+
 async function copyLink(id) {
   const url = `${location.origin}/match/${id}`;
   try {
@@ -2064,8 +2086,11 @@ function render(data) {
   const teamName = (i) => teamLabel(data, i);
 
   $("meta").innerHTML =
-    (data.id ? `<button class="chip btn" id="copyLink">🔗 Скопировать ссылку на матч</button>` : "");
+    (data.id ? `<button class="chip btn" id="copyLink">🔗 Скопировать ссылку на матч</button>` : "") +
+    (data.id && USER && MATCH_LIST.some((m) => m.id === data.id)
+      ? ` <button class="chip btn del" id="delMatch">🗑 Удалить разбор</button>` : "");
   if (data.id) $("copyLink").addEventListener("click", () => copyLink(data.id));
+  if ($("delMatch")) $("delMatch").addEventListener("click", () => deleteMatch(data.id));
 
   let html = `<tr><th>Игрок</th><th>K</th><th>D</th><th>A</th><th>K/D</th><th>ADR</th><th>HS%</th>` +
     `<th title="Раунды, где игрок убил, ассистнул, выжил или его разменяли">KAST</th>` +
