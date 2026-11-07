@@ -63,3 +63,13 @@ for sid, name in names.items():
             (a.phase == "pre").sum(), (a.phase == "in").sum(), (a.phase == "post").sum(),
             int(flash[a.index].sum()), int(same[a.index].sum())]
     print(f"{name[:15]:<16}" + "".join(f"{int(v):>7}" for v in vals))
+
+# Каждое убийство вне раунда: после какого раунда и через сколько секунд после его конца
+print("\nУбийства вне раунда:")
+out = deaths[deaths["phase"].isin(["pre", "post", "end"])]
+for e in out.itertuples(index=False):
+    prev = [i for i, r in enumerate(rounds) if r["end"] < e.tick]
+    after = f"после раунда {prev[-1] + 1} (+{(e.tick - rounds[prev[-1]]['end']) / 64:.1f} с)" if prev else "до 1-го раунда"
+    att, vic = names.get(e.attacker_steamid, e.attacker_steamid), names.get(e.user_steamid, e.user_steamid)
+    print(f"  {att} -> {vic}  [{getattr(e, 'weapon', '?')}]  {after}  ({e.phase})")
+print(f"Всего раундов: {len(rounds)}, смена сторон после раунда 12")
