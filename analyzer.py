@@ -550,6 +550,13 @@ def analyze_demo(demo_path: Path) -> dict:
     rounds = build_rounds(parser)
     num_rounds = max(len(rounds), 1)
 
+    # Всё, что было до первого настоящего раунда (рестарт после разминки, отсчёт «LIVE»),
+    # FACEIT и сама игра не засчитывают — иначе у игрока появляются лишние убийства.
+    if rounds:
+        first = rounds[0]["start"]
+        deaths = deaths[deaths["tick"] >= first]
+        hurts = hurts[hurts["tick"] >= first]
+
     # SteamID всегда как строки
     for df in (deaths, hurts):
         for col in ("attacker_steamid", "user_steamid", "assister_steamid"):
