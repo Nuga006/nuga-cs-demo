@@ -128,7 +128,10 @@ def real_damage(hurts: pd.DataFrame, rounds: list[dict]) -> pd.Series:
         if ri != current:                       # новый раунд — у всех снова 100 HP
             current, hp = ri, {}
         left = 0 if pd.isna(left) else int(left)
-        out[idx] = max(hp.get(victim, 100) - left, 0)
+        before = hp.get(victim, 100)
+        if left >= before:                      # HP стало больше — игрок возродился (переподключение) с полными 100
+            before = 100
+        out[idx] = max(before - left, 0)
         hp[victim] = left
     return pd.Series(out).reindex(hurts.index)
 
@@ -668,6 +671,21 @@ def analyze_demo(demo_path: Path) -> dict:
             **adv.get(sid, {}),
             **ext.get(sid, {}),
         })
+
+    # Итоговые K/D/A сверяем с табло игры в конце матча — именно его показывает FACEIT.
+    # Обычно числа те же; расходятся в редких случаях (игрок переподключился и возродился посреди раунда).
+    if rounds:
+        try:
+            board = parser.parse_ticks(["kills_total", "deaths_total", "assists_total"], ticks=[rounds[-1]["end"]])
+            board = {str(b["steamid"]): b for b in board.to_dict("records")}
+        except Exception:
+            board = {}
+        for row in player_rows:
+            b = board.get(row["steamid"])
+            if not b or any(pd.isna(b[c]) for c in ("kills_total", "deaths_total", "assists_total")):
+                continue                        # игрока нет на табло (вышел до конца) — оставляем подсчёт по событиям
+            row["kills"], row["deaths"], row["assists"] = int(b["kills_total"]), int(b["deaths_total"]), int(b["assists_total"])
+            row["kd"] = round(row["kills"] / row["deaths"], 2) if row["deaths"] else float(row["kills"])
 
     # Дуэли: duels[убийца][жертва] = сколько раз
     duels: dict[str, dict[str, int]] = {}
