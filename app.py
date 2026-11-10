@@ -17,6 +17,7 @@ import os
 import re
 import time
 import shutil
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,6 +28,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFi
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+import clips3d
 from analyzer import analyze_demo, prepare_demo
 
 BASE = Path(__file__).parent
@@ -420,6 +422,7 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
         data["id"] = mid
         data["analyzer_version"] = ANALYZER_VERSION
         save_match(mid, data, faceit_id)
+        keep_demo(dem, mid)                                  # демка пригодится для 3D-клипов из CS2
         if old:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             meta["created"] = old.get("created", meta["created"])    # дата разбора остаётся прежней
@@ -593,6 +596,147 @@ def analyze(request: Request, file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, f)
 
     return run_analysis(raw, steam_id, faceit_id_from(file.filename or ""))
+
+
+# ---------------- 3D-клипы из самой CS2 ----------------
+# Работает только на компьютере, где запущен сервер: он сам открывает CS2 через HLAE и записывает момент.
+
+KEEP_DEMOS = 6                       # сколько последних демок хранить в папке CS2 для клипов (каждая ~400 МБ)
+CLIP_JOB: dict = {"state": "idle"}   # одна запись за раз: CS2 на компьютере одна
+CLIP_LOCK = threading.Lock()
+
+
+def cs2_demo_dir() -> Path | None:
+    """Папка game/csgo/nuga в CS2 — туда кладём демки для клипов. None, если CS2 на этом компьютере нет."""
+    try:
+        return clips3d.find_cs2(None) / "game" / "csgo" / "nuga"
+    except SystemExit:
+        return None
+
+
+def keep_demo(dem: Path, mid: str) -> None:
+    """После разбора не удаляем демку, а переносим в папку CS2 — чтобы потом делать 3D-клипы одной кнопкой."""
+    try:
+        folder = cs2_demo_dir()
+        if folder is None or not dem.exists():
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(dem), str(folder / f"{mid}.dem"))
+        old = sorted(folder.glob("*.dem"), key=lambda p: p.stat().st_mtime, reverse=True)[KEEP_DEMOS:]
+        for p in old:
+            p.unlink(missing_ok=True)
+    except OSError:
+        pass                         # не получилось сохранить — разбор от этого не страдает
+
+
+def find_demo(mid: str, meta: dict) -> Path | None:
+    """Демка матча для клипа: уже лежит в папке CS2 или находится в «Загрузках» по номеру матча FACEIT."""
+    folder = cs2_demo_dir()
+    if folder is None:
+        return None
+    target = folder / f"{mid}.dem"
+    if target.exists():
+        return target
+    fid = meta.get("faceit_id")
+    if fid:
+        for place in (Path.home() / "Downloads", folder.parent, folder.parent / "replays"):
+            for src in sorted(place.glob(f"*{fid}*")) if place.is_dir() else []:
+                if src.name.lower().endswith(ALLOWED):
+                    clips3d.unpack_demo(src, target)
+                    return target
+    return None
+
+
+def is_local(request: Request) -> bool:
+    """Запрос пришёл с этого же компьютера, а не через публичную ссылку (Cloudflare добавляет свои заголовки)."""
+    if any(h in request.headers for h in ("cf-connecting-ip", "cf-ray", "x-forwarded-for")):
+        return False
+    return bool(request.client) and request.client.host in ("127.0.0.1", "::1")
+
+
+def clip3d_path(mid: str, ri: int, pi: int) -> Path:
+    return clips3d.OUT / mid / "site" / f"r{ri + 1}_p{pi}.mp4"
+
+
+def clip3d_job(mid: str, ri: int, pi: int, clip: dict, data: dict, meta: dict) -> None:
+    job = CLIP_JOB
+
+    def step(text: str) -> None:
+        text = text.strip()
+        if text:
+            job["step"] = text.splitlines()[-1]
+
+    clips3d.ON_SAY = step
+    try:
+        cs2 = clips3d.find_cs2(None)
+        hlae = clips3d.find_hlae(None)
+        clips3d.ffmpeg_bin()
+        if clips3d.running("cs2.exe"):
+            raise RuntimeError("CS2 уже запущена — закройте игру и нажмите ещё раз")
+        step("Ищу демку матча…")
+        if find_demo(mid, meta) is None:
+            raise RuntimeError("Нет демки этого матча. Загрузите её на сайт ещё раз (это бесплатно) — "
+                               "после разбора демка сохранится для клипов.")
+        work = clips3d.OUT / mid / "_job"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(parents=True)
+        error = clips3d.capture(cs2, hlae, f"nuga/{mid}", [clip], work, data.get("map"), 60, "full", 1920, 1080)
+        if error:
+            raise RuntimeError(error)
+        done = clips3d.assemble(work, no_montage=True)
+        if not done:
+            raise RuntimeError("Видео не записалось")
+        out = clip3d_path(mid, ri, pi)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(done[0]), str(out))
+        shutil.rmtree(work, ignore_errors=True)
+        job.update(state="done", step="Готово", url=f"/clips3d/{mid}/{out.name}")
+    except (RuntimeError, SystemExit, OSError, subprocess.CalledProcessError) as e:
+        job.update(state="error", step=str(e) or "Не получилось записать клип")
+    finally:
+        clips3d.ON_SAY = None
+
+
+@app.get("/api/clip3d/status")
+def clip3d_status(request: Request):
+    """Можно ли на этом компьютере делать 3D-клипы и что сейчас с записью."""
+    return {"available": is_local(request) and cs2_demo_dir() is not None, **CLIP_JOB}
+
+
+@app.post("/api/match/{mid}/clip3d")
+def clip3d_start(mid: str, request: Request, round: int = Query(..., ge=0, le=200), player: int = Query(..., ge=0, le=20)):
+    """Записать момент (все убийства игрока в раунде и клатч) в самой CS2. Готовый клип потом отдаётся сразу."""
+    require_login(request)
+    if not is_local(request):
+        raise HTTPException(403, "3D-клипы записываются только на компьютере, где запущен сайт")
+    if not MATCH_ID.fullmatch(mid) or not (MATCHES / f"{mid}.json.gz").exists():
+        raise HTTPException(404, "Матч не найден")
+    ready = clip3d_path(mid, round, player)
+    if ready.exists():
+        return {"state": "done", "url": f"/clips3d/{mid}/{ready.name}"}
+    with gzip.open(MATCHES / f"{mid}.json.gz", "rt", encoding="utf-8") as f:
+        data = json.load(f)
+    meta = json.loads((MATCHES / f"{mid}.meta.json").read_text(encoding="utf-8"))
+    clips = [c for c in clips3d.build_clips(data, None, None, None, 2) if c["round"] == round and c["player"] == player]
+    if not clips:
+        raise HTTPException(404, "В этом раунде у игрока нет момента для клипа")
+    with CLIP_LOCK:
+        if CLIP_JOB.get("state") == "running":
+            raise HTTPException(409, "Уже идёт запись другого клипа — дождитесь её конца")
+        CLIP_JOB.clear()
+        CLIP_JOB.update(state="running", step="Запускаю CS2…", mid=mid, round=round, player=player)
+        threading.Thread(target=clip3d_job, args=(mid, round, player, clips[0], data, meta), daemon=True).start()
+    return dict(CLIP_JOB)
+
+
+@app.get("/clips3d/{mid}/{name}")
+def clip3d_file(mid: str, name: str):
+    if not MATCH_ID.fullmatch(mid) or not re.fullmatch(r"r\d{1,3}_p\d{1,2}\.mp4", name):
+        raise HTTPException(404, "Клип не найден")
+    path = clips3d.OUT / mid / "site" / name
+    if not path.exists():
+        raise HTTPException(404, "Клип не найден")
+    return FileResponse(path, media_type="video/mp4")
 
 
 # ---------------- FACEIT ----------------

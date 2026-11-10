@@ -48,7 +48,13 @@ LEAD = 3.0           # за сколько секунд до момента пе
 ORDER = {"ACE": 0, "1v5": 1, "1v4": 2, "4K": 3, "1v3": 4, "3K": 5, "1v2": 6, "2K": 7, "1v1": 8, "1K": 9}
 
 
+ON_SAY = None        # сюда сайт подставляет свою функцию, чтобы показывать ход записи на странице
+
+
 def say(text: str = "") -> None:
+    if ON_SAY:
+        ON_SAY(text)
+        return
     print(text, flush=True)
 
 
@@ -397,26 +403,39 @@ def record(args):
     if args.dry_run:
         return
 
+    error = capture(cs2, hlae, f"nuga/{mid}", clips, work, data.get("map"), args.fps, args.hud, width, height)
+    if error:
+        say(f"\nОШИБКА: {error}")
+    assemble(work, args.crf, args.no_montage, args.keep_raw)
+
+
+CRASH_HINT = ("CS2 вылетела при открытии демки — игра не может прочитать именно этот файл (бывает с отдельными "
+              "демками, HLAE тут ни при чём). Проверь, открывается ли демка в самой CS2 (консоль: playdemo). "
+              "Если нет — клип из этого матча сделать не выйдет, пока Valve не починит.")
+
+
+def capture(cs2: Path, hlae: Path, demo_rel: str, clips: list[dict], work: Path, map_name, fps: int, hud: str,
+            width: int, height: int) -> str | None:
+    """Запускает CS2, записывает клипы в work/raw и закрывает игру. Возвращает текст ошибки или None."""
     raw = work / "raw"
     shutil.rmtree(raw, ignore_errors=True)
     raw.mkdir(parents=True)
     (work / "manifest.json").write_text(json.dumps(
-        {"match": mid, "map": data.get("map"), "fps": args.fps, "clips": clips}, ensure_ascii=False, indent=2), encoding="utf-8")
+        {"map": map_name, "fps": fps, "clips": clips}, ensure_ascii=False, indent=2), encoding="utf-8")
 
     launch_cs2(cs2, hlae, width, height)
     con = None
+    error = None
     try:
         con = Console(NETCON_PORT)
         con.log = open(work / "console.log", "w", encoding="utf-8", errors="replace")
-        done = record_clips(con, f"nuga/{mid}", clips, raw, args.fps, args.hud)
+        done = record_clips(con, demo_rel, clips, raw, fps, hud)
         say(f"Записано клипов: {done}")
     except RuntimeError as e:
-        say(f"\nОШИБКА: {e}")
+        error = str(e)
         time.sleep(3)
-        if "пропала" in str(e) or not running("cs2.exe"):
-            say("Похоже, CS2 вылетела. Если это случается сразу после открытия демки — игра не может прочитать\n"
-                "именно этот файл (бывает с отдельными демками, HLAE тут ни при чём). Проверь: открывается ли демка\n"
-                "в самой CS2 (консоль: playdemo). Если нет — клип из этого матча сделать не выйдет, пока Valve не починит.")
+        if "пропала" in error or not running("cs2.exe"):
+            error = CRASH_HINT
     finally:
         if con:
             try:
@@ -430,7 +449,7 @@ def record(args):
             time.sleep(1)
         if running("cs2.exe"):                      # иногда CS2 зависает при выходе — закрываем сами
             subprocess.run(["taskkill", "/F", "/IM", "cs2.exe"], capture_output=True)
-    finish(argparse.Namespace(match=mid, crf=args.crf, no_montage=args.no_montage, keep_raw=args.keep_raw))
+    return error
 
 
 # ---------- сборка роликов ----------
@@ -445,17 +464,24 @@ def find_takes(raw: Path) -> list[Path]:
 
 
 def finish(args):
-    work = OUT / args.match
+    if not assemble(OUT / args.match, args.crf, args.no_montage, args.keep_raw):
+        sys.exit(1)
+
+
+def assemble(work: Path, crf: int = 18, no_montage: bool = False, keep_raw: bool = False) -> list[Path]:
+    """Собирает mp4 из записей в work/raw по списку из manifest.json. Возвращает готовые файлы."""
     man_path = work / "manifest.json"
     if not man_path.exists():
-        sys.exit(f"Нет {man_path} — сначала python clips3d.py record")
+        say(f"Нет {man_path} — сначала python clips3d.py record")
+        return []
     man = json.loads(man_path.read_text(encoding="utf-8"))
     clips = man["clips"]
     ff = ffmpeg_bin()
 
     takes = find_takes(work / "raw")
     if not takes:
-        sys.exit(f"В {work / 'raw'} нет записей — запись в CS2 не прошла (см. {work / 'console.log'}).")
+        say(f"В {work / 'raw'} нет записей — запись в CS2 не прошла (см. {work / 'console.log'}).")
+        return []
 
     say("Собираю ролики…")
     done = []
@@ -479,13 +505,13 @@ def finish(args):
         # Склеиваем отрезки клипа (видео из HLAE + звук отдельным файлом)
         streams = "".join(f"[{2 * k}:v:0][{2 * k + 1}:a:0]" for k in range(len(parts)))
         cmdline += ["-filter_complex", f"{streams}concat=n={len(parts)}:v=1:a=1[v][a]", "-map", "[v]", "-map", "[a]",
-                    "-c:v", "libx264", "-preset", "medium", "-crf", str(args.crf), "-pix_fmt", "yuv420p",
+                    "-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-pix_fmt", "yuv420p",
                     "-r", str(man["fps"]), "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-movflags", "+faststart", str(out)]
         subprocess.run(cmdline, check=True)
         done.append(out)
         say(f"  ✓ {out.name}")
 
-    if len(done) > 1 and not args.no_montage:
+    if len(done) > 1 and not no_montage:
         lst = work / "concat.txt"
         lst.write_text("".join(f"file '{p.name}'\n" for p in done), encoding="utf-8")
         montage = work / "montage.mp4"
@@ -495,9 +521,10 @@ def finish(args):
         lst.unlink()
         say(f"  ✓ {montage.name} — все моменты подряд")
 
-    if not args.keep_raw and done and len(done) == len(clips):     # сырые записи удаляем, только если всё собралось
+    if not keep_raw and done and len(done) == len(clips):     # сырые записи удаляем, только если всё собралось
         shutil.rmtree(work / "raw", ignore_errors=True)
     say(f"\nГотово: {work}" if done else "\nНи одного ролика не получилось.")
+    return done
 
 
 # ---------- командная строка ----------
