@@ -1,6 +1,7 @@
 # Nuga CS Demo — модуль разбора демки.
 # Здесь вся логика анализа. Сервер (app.py) просто вызывает analyze_demo().
 
+import bisect
 import gzip
 import shutil
 from pathlib import Path
@@ -62,10 +63,7 @@ def build_rounds(parser: DemoParser) -> list[dict]:
     ends["side"] = ends["winner"].map(normalize_side) if "winner" in ends.columns else ""
     ends = ends[ends["side"] != ""]
 
-    # Если конец одного и того же раунда записан дважды — оставляем первый
-    if "total_rounds_played" in ends.columns:
-        ends = ends.sort_values("tick").drop_duplicates(subset="total_rounds_played", keep="first")
-
+    has_num = "total_rounds_played" in ends.columns
     starts = sorted(int(t) for t in freeze["tick"])
     rounds = []
     for _, e in ends.sort_values("tick").iterrows():
@@ -74,14 +72,23 @@ def build_rounds(parser: DemoParser) -> list[dict]:
         if not before:
             continue
         start_tick = max(before)
-        # Защита от дублей: раунд должен начинаться после конца предыдущего
+        # Конец одного и того же раунда записан дважды — второй раз пропускаем
         if rounds and start_tick < rounds[-1]["end"]:
             continue
+        # Счётчик сыгранных раундов не вырос — значит, игру перезапускали: после ножевого раунда
+        # счёт начинается заново, а при восстановлении бэкапа раунд переигрывают.
+        # В зачёт идёт последняя версия, всё сыгранное раньше с этим номером выбрасываем.
+        num = int(e["total_rounds_played"]) if has_num and not pd.isna(e["total_rounds_played"]) else None
+        while num is not None and rounds and rounds[-1]["num"] is not None and rounds[-1]["num"] >= num:
+            rounds.pop()
         rounds.append({
             "start": start_tick,
             "end": end_tick,
             "winner": e["side"],
+            "num": num,
         })
+    for r in rounds:
+        del r["num"]
     return rounds
 
 
@@ -105,6 +112,25 @@ def counted_ticks(parser: DemoParser, rounds: list[dict]):
         tick = int(tick)
         return first <= tick <= last and not any(a <= tick < b for a, b in aborted)
     return keep
+
+
+def real_damage(hurts: pd.DataFrame, rounds: list[dict]) -> pd.Series:
+    """Настоящий урон каждого попадания — сколько HP оно сняло, как считает табло игры и FACEIT.
+    В событии урон записан «с перебором» (хедшот в игрока с 20 HP даёт 100+) и с ошибкой округления,
+    поэтому ведём HP каждого игрока сами: в начале раунда 100, после попадания — столько, сколько осталось."""
+    if hurts.empty or "health" not in hurts.columns:
+        return hurts["dmg_health"].clip(upper=100) if "dmg_health" in hurts.columns else pd.Series(0, index=hurts.index)
+    starts = [r["start"] for r in rounds]
+    ordered = hurts.sort_values("tick", kind="stable")
+    hp, current, out = {}, None, {}
+    for idx, tick, victim, left in zip(ordered.index, ordered["tick"], ordered["user_steamid"], ordered["health"]):
+        ri = bisect.bisect_right(starts, int(tick))
+        if ri != current:                       # новый раунд — у всех снова 100 HP
+            current, hp = ri, {}
+        left = 0 if pd.isna(left) else int(left)
+        out[idx] = max(hp.get(victim, 100) - left, 0)
+        hp[victim] = left
+    return pd.Series(out).reindex(hurts.index)
 
 
 def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
@@ -401,10 +427,13 @@ def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame
     n = max(len(rounds), 1)
     st = {sid: {"kast_rounds": 0, "fk": 0, "fd": 0, "mk": [0] * 6, "trades": 0, "traded": 0} for sid in player_ids}
 
-    for r in rounds:
+    for ri, r in enumerate(rounds):
         in_round = lambda df: df[(df["tick"] >= r["start"]) & (df["tick"] <= r["end"])]
         rd = in_round(deaths).sort_values("tick")
         rk = in_round(kills)
+        # Фраги после конца раунда (до начала следующего) игра и FACEIT засчитывают в этот же раунд
+        until = rounds[ri + 1]["start"] if ri + 1 < len(rounds) else r["end"] + 1
+        rk_all = kills[(kills["tick"] >= r["start"]) & (kills["tick"] < until)]
 
         # Первая смерть раунда: убийца получает FK, погибший — FD
         first = rk.sort_values("tick").head(1)
@@ -415,7 +444,7 @@ def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame
                 st[row.user_steamid]["fd"] += 1
 
         # Сколько убийств за раунд у каждого — для мульти-киллов
-        for sid, cnt in rk.groupby("attacker_steamid").size().items():
+        for sid, cnt in rk_all.groupby("attacker_steamid").size().items():
             if sid in st:
                 st[sid]["mk"][min(int(cnt), 5)] += 1
 
@@ -483,7 +512,8 @@ def advanced_stats(rounds: list[dict], deaths: pd.DataFrame, kills: pd.DataFrame
 GUN_SKIP = ("knife", "bayonet", "grenade", "flashbang", "smoke", "molotov", "incendiary", "decoy", "c4", "taser", "inferno", "world")
 
 
-def extra_stats(parser: DemoParser, kills: pd.DataFrame, enemy_hurts: pd.DataFrame, player_ids: list[str]) -> dict:
+def extra_stats(parser: DemoParser, kills: pd.DataFrame, enemy_hurts: pd.DataFrame, player_ids: list[str],
+                last_tick: int | None = None) -> dict:
     """Точность стрельбы, особые убийства, бомба и MVP — для страницы «Статистика»."""
     out = {sid: {"shots": 0, "hits": 0, "noscope": 0, "smoke": 0, "wall": 0, "blind": 0,
                  "plants": 0, "defuses": 0, "mvps": 0} for sid in player_ids}
@@ -524,6 +554,15 @@ def extra_stats(parser: DemoParser, kills: pd.DataFrame, enemy_hurts: pd.DataFra
     count(safe("bomb_planted"), "user_steamid", "plants")
     count(safe("bomb_defused"), "user_steamid", "defuses")
     count(safe("round_mvp"), "user_steamid", "mvps")
+    # В демках FACEIT события round_mvp нет — берём звёзды MVP с табло в конце матча
+    if last_tick is not None:
+        try:
+            board = parser.parse_ticks(["mvps"], ticks=[last_tick])
+            for sid, n in zip(board["steamid"].astype(str), board["mvps"]):
+                if sid in out and not pd.isna(n):
+                    out[sid]["mvps"] = int(n)
+        except Exception:
+            pass
     return out
 
 
@@ -572,6 +611,8 @@ def analyze_demo(demo_path: Path) -> dict:
     rounds = build_rounds(parser)
     num_rounds = max(len(rounds), 1)
 
+    hurts["dmg"] = real_damage(hurts, rounds)      # считаем до фильтра: нужны все попадания подряд
+
     # Убираем то, что FACEIT не засчитывает: до старта, после конца матча и в откаченных раундах
     if rounds:
         keep = counted_ticks(parser, rounds)
@@ -592,9 +633,8 @@ def analyze_demo(demo_path: Path) -> dict:
         & (deaths["attacker_team_num"] != deaths["user_team_num"])
     ]
 
-    # Урон по противникам, один удар не больше 100 HP
+    # Урон по противникам (сколько HP реально снято)
     enemy_hurts = hurts[hurts["attacker_team_num"] != hurts["user_team_num"]].copy()
-    enemy_hurts["dmg"] = enemy_hurts["dmg_health"].clip(upper=100)
 
     # Игроки: оставляем только тех, кто был в командах (без зрителей)
     players = parser.parse_player_info()
@@ -604,7 +644,7 @@ def analyze_demo(demo_path: Path) -> dict:
 
     ids = [str(x) for x in players["steamid"]]
     adv = advanced_stats(rounds, deaths, kills, enemy_hurts, ids)
-    ext = extra_stats(parser, kills, enemy_hurts, ids)
+    ext = extra_stats(parser, kills, enemy_hurts, ids, rounds[-1]["end"] if rounds else None)
 
     player_rows = []
     for _, p in players.iterrows():
