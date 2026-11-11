@@ -2798,7 +2798,7 @@ async function recordClip(h) {
 // Сначала показываем настройки: что записать (момент, все хайлайты, раунд, монтаж из убийств) и как (качество, HUD…).
 // Если запись недоступна (сайт открыт по публичной ссылке или нет CS2) — показываем команды для ручного просмотра.
 let CLIP3D_TIMER = null;
-const CLIP3D = Object.assign({ res: "1080", fps: 60, hud: "full", xray: false, vertical: false },
+const CLIP3D = Object.assign({ res: "1080", fps: 60, hud: "full", xray: false, vertical: false, enemy: "off", voice: "off" },
   (() => { try { return JSON.parse(localStorage.getItem("clip3d") || "{}"); } catch { return {}; } })());
 
 function showCs2(h) { open3d({ player: h.player, round: h.round, h }); }
@@ -2878,6 +2878,8 @@ async function open3d(ctx) {
       `<div><div class="o3t">Формат</div>${seg("vertical", [[false, "16:9 · YouTube"], [true, "9:16 · Reels, Shorts"]])}</div>` +
       `<div><div class="o3t">Интерфейс (HUD)</div>${seg("hud", [["full", "Весь"], ["killfeed", "Только киллфид"], ["none", "Без HUD"]])}</div>` +
       `<div><div class="o3t">Рентген (игроки сквозь стены)</div>${seg("xray", [[false, "Выкл"], [true, "Вкл"]])}</div>` +
+      `<div><div class="o3t">Голосовой чат</div>${seg("voice", [["off", "Выкл"], ["all", "Обе команды"], ["team", "Свои"], ["enemy", "Противники"]])}</div>` +
+      `<div><div class="o3t">Камера противника (убийство его глазами)</div>${seg("enemy", [["off", "Выкл"], ["each", "После каждого убийства"], ["end", "После всех убийств"]])}</div>` +
       `</div>` +
       `<div class="o3go"><button class="abtn imp" id="o3Start">● Записать</button>` +
       `<span class="muted">Откроется окно CS2 — игра сама покажет и запишет видео. Ничего нажимать не нужно. CS2 и FACEIT AC перед записью закройте.</span></div>`);

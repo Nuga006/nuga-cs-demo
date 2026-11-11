@@ -667,18 +667,23 @@ def clip3d_job(mid: str, out: Path, clips: list, data: dict, meta: dict, opts: d
         cs2 = clips3d.find_cs2(None)
         hlae = clips3d.find_hlae(None)
         clips3d.ffmpeg_bin()
+        wait_until = time.time() + 20             # после прошлой записи CS2 может ещё закрываться — подождём
+        while clips3d.running("cs2.exe") and time.time() < wait_until:
+            time.sleep(1)
         if clips3d.running("cs2.exe"):
             raise RuntimeError("CS2 уже запущена — закройте игру и нажмите ещё раз")
         step("Ищу демку матча…")
-        if find_demo(mid, meta) is None:
+        dem = find_demo(mid, meta)
+        if dem is None:
             raise RuntimeError("Нет демки этого матча. Загрузите её на сайт ещё раз (это бесплатно) — "
                                "после разбора демка сохранится для клипов.")
         work = clips3d.OUT / mid / "_job"
         shutil.rmtree(work, ignore_errors=True)
         work.mkdir(parents=True)
         width, height = CLIP_RES[opts["res"]]
+        voice = clips3d.voice_mask(dem, clips[0]["steamid"], opts.get("voice", "off"), clips[0]["start"])
         error = clips3d.capture(cs2, hlae, f"nuga/{mid}", clips, work, data.get("map"), opts["fps"], opts["hud"],
-                                width, height, opts["xray"])
+                                width, height, opts["xray"], voice)
         if error:
             raise RuntimeError(error)
         done = clips3d.assemble(work, vertical=opts["vertical"])
@@ -711,7 +716,9 @@ CLIP_MAX_SECONDS = 600               # длиннее 10 минут за оди�
 def clip3d_start(mid: str, request: Request, body: dict = Body(default={})):
     """Записать видео в самой CS2. Что писать (mode): moment — хайлайт игрока в раунде, compilation — все его
     хайлайты одним роликом, round — весь раунд от его лица, montage — выбранные убийства.
-    Настройки: res 720/1080, fps 60/120, hud full/killfeed/none, xray, vertical (9:16).
+    Настройки: res 720/1080, fps 60/120, hud full/killfeed/none, xray, vertical (9:16),
+    enemy — камера противника: off, each (после каждого убийства), end (все в конце),
+    voice — голосовой чат из демки: off, all (обе команды), team (свои), enemy (противники).
     Одинаковый запрос второй раз отдаёт уже готовый клип."""
     require_login(request)
     if not is_local(request):
@@ -729,11 +736,14 @@ def clip3d_start(mid: str, request: Request, body: dict = Body(default={})):
             "hud": str(body.get("hud", "full")),
             "xray": bool(body.get("xray", False)),
             "vertical": bool(body.get("vertical", False)),
+            "enemy": str(body.get("enemy", "off")),
+            "voice": str(body.get("voice", "off")),
         }
     except (TypeError, ValueError):
         raise HTTPException(400, "Неверные настройки записи")
     if (opts["mode"] not in ("moment", "compilation", "round", "montage") or opts["res"] not in CLIP_RES
-            or opts["fps"] not in (60, 120) or opts["hud"] not in ("full", "killfeed", "none")):
+            or opts["fps"] not in (60, 120) or opts["hud"] not in ("full", "killfeed", "none")
+            or opts["enemy"] not in ("off", "each", "end") or opts["voice"] not in ("off", "all", "team", "enemy")):
         raise HTTPException(400, "Неверные настройки записи")
 
     key = hashlib.sha256(json.dumps(opts, sort_keys=True).encode()).hexdigest()[:16]
@@ -758,6 +768,8 @@ def clip3d_start(mid: str, request: Request, body: dict = Body(default={})):
         clips = [c for c in [clips3d.kills_clip(data, pi, opts["kills"])] if c]
     if not clips:
         raise HTTPException(404, "Для такой записи у игрока нет моментов")
+    if opts["enemy"] != "off":                               # те же убийства от лица противника
+        clips = clips3d.add_enemy_views(data, clips, opts["enemy"])
     if sum(c["length"] for c in clips) > CLIP_MAX_SECONDS:
         raise HTTPException(400, "Слишком длинное видео — выберите меньше моментов")
 

@@ -309,9 +309,9 @@ def launch_cs2(cs2: Path, hlae: Path, width: int, height: int) -> None:
                       "-addEnv", f"USRLOCALCSGO={cfg_home}"])
 
 
-def spec_cmds(c: dict) -> list[str]:
+def spec_cmds(name: str) -> list[str]:
     """Камера от первого лица на игрока (в CS2 игрок выбирается по нику)."""
-    name = re.sub(r'[";]', "", c["name"])
+    name = re.sub(r'[";]', "", name)
     return [f'spec_player "{name}"', "spec_mode 1"]
 
 
@@ -343,6 +343,80 @@ def kills_clip(data: dict, pi: int, ticks: list[int]) -> dict | None:
     return make_clip(data, mine[ticks[0]], pi, [f"{len(ticks)}K"], segs)
 
 
+def voice_mask(dem: Path, steamid: str, mode: str, tick: int) -> int:
+    """Чьи голоса слышны в записи: mode "all" — обе команды, "team" — команда игрока, "enemy" — противники.
+    В демке у каждого игрока свой номер (user_id); голос включается битом с этим номером
+    в tv_listen_voice_indices. Команду смотрим на нужном тике — стороны в матче меняются."""
+    if mode not in ("all", "team", "enemy"):
+        return 0
+    from demoparser2 import DemoParser
+    df = DemoParser(str(dem)).parse_ticks(["user_id", "team_num"], ticks=[int(tick)])
+    rows = [(str(r.steamid), int(r.user_id), int(r.team_num)) for r in df.itertuples() if 0 <= int(r.user_id) < 64]
+    mine = next((team for sid, _, team in rows if sid == str(steamid)), None)
+    mask = 0
+    for sid, uid, team in rows:
+        if mode == "all" or (mode == "team") == (team == mine):
+            mask |= 1 << uid
+    return mask
+
+
+def voice_cmds(mask: int) -> list[str]:
+    def signed(x: int) -> int:                 # переменная игры — 32-битное число со знаком
+        return x - (1 << 32) if x >= (1 << 31) else x
+    return [f"tv_listen_voice_indices {signed(mask & 0xFFFFFFFF)}", f"tv_listen_voice_indices_h {signed(mask >> 32)}"]
+
+
+ENEMY_PRE = 3.0      # камера противника: сколько секунд до его смерти показывать
+ENEMY_POST = 0.6     # и сколько после
+
+
+def add_enemy_views(data: dict, clips: list[dict], mode: str) -> list[dict]:
+    """Добавляет в клипы те же убийства от лица жертвы.
+    mode "each" — сразу после каждого убийства, "end" — все подряд в конце видео."""
+    rounds = data["replay"]["rounds"]
+    players = data["players"]
+    tail = []
+    for c in clips:
+        kills = sorted((e[1], e[0], e[3]) for e in data.get("kill_events", []) if e[2] == c["player"])
+
+        def enemy_seg(k):
+            tick, ri, vi = k
+            return [max(tick - int(ENEMY_PRE * TICKRATE), rounds[ri]["start"]), tick + int(ENEMY_POST * TICKRATE), players[vi]["name"]]
+
+        segs = []
+        for seg in c["segs"]:
+            inside = [k for k in kills if seg[0] <= k[0] <= seg[1]]
+            if mode != "each" or not inside:
+                segs.append(seg)
+                tail += [enemy_seg(k) for k in inside]
+                continue
+            # Убийства, идущие почти подряд (меньше 1.3 с), показываем одной группой
+            groups = [[inside[0]]]
+            for k in inside[1:]:
+                if k[0] - groups[-1][-1][0] < 1.3 * TICKRATE:
+                    groups[-1].append(k)
+                else:
+                    groups.append([k])
+            cur = seg[0]
+            for gi, g in enumerate(groups):
+                last = gi == len(groups) - 1
+                cut = seg[1] if last else min(g[-1][0] + TICKRATE, groups[gi + 1][0][0] - TICKRATE // 3)
+                segs.append([cur, cut])
+                segs += [enemy_seg(k) for k in g]
+                cur = cut
+        c["segs"] = segs
+    if mode == "end" and tail:
+        if len(clips) == 1:
+            clips[0]["segs"] += tail
+        else:                                          # несколько клипов — противники отдельным последним клипом
+            last = dict(clips[-1], types=["ENEMY"], segs=tail, index=len(clips))
+            last["file"] = f"{len(clips) + 1:02d}_ENEMY_{safe_name(last['name'])}.mp4"
+            clips.append(last)
+    for c in clips:
+        c["length"] = sum(x[1] - x[0] for x in c["segs"]) / TICKRATE
+    return clips
+
+
 def make_clip(data: dict, ri: int, pi: int, types: list[str], segs: list[list[int]]) -> dict:
     p = data["players"][pi]
     return {"round": ri, "player": pi, "name": p["name"], "steamid": p["steamid"], "types": types, "segs": segs,
@@ -350,7 +424,8 @@ def make_clip(data: dict, ri: int, pi: int, types: list[str], segs: list[list[in
             "index": 0, "file": f"R{ri + 1:02d}_{'+'.join(types)}_{safe_name(p['name'])}.mp4"}
 
 
-def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps: int, hud: str, xray: bool = False) -> int:
+def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps: int, hud: str, xray: bool = False,
+                 voice: int = 0) -> int:
     """Открывает демку и по очереди записывает клипы. Возвращает, сколько записано."""
     con.quiet(6)                                   # даём главному меню догрузиться
     hud_cmds = {"full": ["cl_draw_only_deathnotices 0", "cl_drawhud 1"],
@@ -361,7 +436,7 @@ def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps:
             "mirv_streams record screen enabled 1",
             "mirv_streams record screen settings afxFfmpegYuv420p",
             "mirv_streams record startMovieWav 1",
-            "demo_ui_mode 0", f"spec_show_xray {int(xray)}", "r_show_build_info 0", "volume 0.5", "snd_mute_losefocus 0",
+            "demo_ui_mode 0", f"spec_show_xray {int(xray)}", "r_show_build_info 0", *voice_cmds(voice), "volume 0.5", "snd_mute_losefocus 0",
             "cl_hud_telemetry_frametime_show 0", "cl_hud_telemetry_ping_show 0",
             "cl_hud_telemetry_net_misdelivery_show 0", "cl_hud_telemetry_net_quality_graph_show 0",
             "cl_hud_telemetry_serverrecvmargin_graph_show 0",
@@ -375,7 +450,9 @@ def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps:
     done = 0
     for i, c in enumerate(clips):
         say(f"  [{i + 1}/{len(clips)}] раунд {c['round'] + 1}  {'+'.join(c['types'])}  {c['name']}  ({c['length']:.0f} с)…")
-        for j, (start, end) in enumerate(c["segs"]):
+        for j, seg in enumerate(c["segs"]):
+            start, end = seg[0], seg[1]
+            who = seg[2] if len(seg) > 2 else c["name"]       # у отрезка «от лица противника» свой игрок
             land = max(start - int(LEAD * TICKRATE), 1)
             con.cmd("demo_pause", "mirv_cmd clear", "mirv_cmd enabled 1", "demo_timescale 1", f"demo_gototick {land}")
             if not con.wait_for(r"Demo Skipping finished", 90):
@@ -383,9 +460,9 @@ def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps:
             con.quiet(1.0)                         # игроки прогрузились — можно ставить камеру
             marker = f"NUGA_CLIP_DONE_{i}_{j}"
             for t in (land + 48, start - 48, start - 8):       # повторяем: после перемотки камера может сброситься
-                for line in spec_cmds(c):
+                for line in spec_cmds(who):
                     con.cmd(f"mirv_cmd addAtTick {t} {line}")
-            con.cmd(*spec_cmds(c),
+            con.cmd(*spec_cmds(who),
                     f"mirv_cmd addAtTick {start} mirv_streams record start",
                     f"mirv_cmd addAtTick {end} mirv_streams record end",
                     f"mirv_cmd addAtTick {end + 2} echo {marker}",
@@ -450,7 +527,7 @@ CRASH_HINT = ("CS2 вылетела при открытии демки — иг�
 
 
 def capture(cs2: Path, hlae: Path, demo_rel: str, clips: list[dict], work: Path, map_name, fps: int, hud: str,
-            width: int, height: int, xray: bool = False) -> str | None:
+            width: int, height: int, xray: bool = False, voice: int = 0) -> str | None:
     """Запускает CS2, записывает клипы в work/raw и закрывает игру. Возвращает текст ошибки или None."""
     raw = work / "raw"
     shutil.rmtree(raw, ignore_errors=True)
@@ -464,7 +541,7 @@ def capture(cs2: Path, hlae: Path, demo_rel: str, clips: list[dict], work: Path,
     try:
         con = Console(NETCON_PORT)
         con.log = open(work / "console.log", "w", encoding="utf-8", errors="replace")
-        done = record_clips(con, demo_rel, clips, raw, fps, hud, xray)
+        done = record_clips(con, demo_rel, clips, raw, fps, hud, xray, voice)
         say(f"Записано клипов: {done}")
     except RuntimeError as e:
         error = str(e)
