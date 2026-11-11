@@ -315,7 +315,42 @@ def spec_cmds(c: dict) -> list[str]:
     return [f'spec_player "{name}"', "spec_mode 1"]
 
 
-def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps: int, hud: str) -> int:
+def round_clip(data: dict, ri: int, pi: int) -> dict | None:
+    """Весь раунд от лица игрока: от начала раунда до его смерти (или до конца раунда, если выжил)."""
+    rounds = data["replay"]["rounds"]
+    if not (0 <= ri < len(rounds) and 0 <= pi < len(data["players"])):
+        return None
+    r = rounds[ri]
+    died = [e[1] for e in data.get("kill_events", []) if e[0] == ri and e[3] == pi]
+    end = (min(died) if died else r["end"]) + int(POST_CLUTCH * TICKRATE)
+    start = max(r["start"] - 2 * TICKRATE, end - int(150 * TICKRATE))
+    return make_clip(data, ri, pi, ["ROUND"], [[int(start), int(end)]])
+
+
+def kills_clip(data: dict, pi: int, ticks: list[int]) -> dict | None:
+    """Монтаж: выбранные убийства игрока подряд (каждое — несколько секунд до и после)."""
+    mine = {e[1]: e[0] for e in data.get("kill_events", []) if e[2] == pi}
+    ticks = sorted(t for t in set(ticks) if t in mine)
+    if not ticks:
+        return None
+    segs = []
+    for t in ticks:
+        a, b = t - int(PRE_NEXT * TICKRATE), t + int(POST_MULTI * TICKRATE)
+        if segs and a <= segs[-1][1] + 2 * TICKRATE:
+            segs[-1][1] = b
+        else:
+            segs.append([a, b])
+    return make_clip(data, mine[ticks[0]], pi, [f"{len(ticks)}K"], segs)
+
+
+def make_clip(data: dict, ri: int, pi: int, types: list[str], segs: list[list[int]]) -> dict:
+    p = data["players"][pi]
+    return {"round": ri, "player": pi, "name": p["name"], "steamid": p["steamid"], "types": types, "segs": segs,
+            "start": segs[0][0], "end": segs[-1][1], "length": sum(b - a for a, b in segs) / TICKRATE,
+            "index": 0, "file": f"R{ri + 1:02d}_{'+'.join(types)}_{safe_name(p['name'])}.mp4"}
+
+
+def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps: int, hud: str, xray: bool = False) -> int:
     """Открывает демку и по очереди записывает клипы. Возвращает, сколько записано."""
     con.quiet(6)                                   # даём главному меню догрузиться
     hud_cmds = {"full": ["cl_draw_only_deathnotices 0", "cl_drawhud 1"],
@@ -326,7 +361,7 @@ def record_clips(con: Console, demo_rel: str, clips: list[dict], raw: Path, fps:
             "mirv_streams record screen enabled 1",
             "mirv_streams record screen settings afxFfmpegYuv420p",
             "mirv_streams record startMovieWav 1",
-            "demo_ui_mode 0", "spec_show_xray 0", "r_show_build_info 0", "volume 0.5", "snd_mute_losefocus 0",
+            "demo_ui_mode 0", f"spec_show_xray {int(xray)}", "r_show_build_info 0", "volume 0.5", "snd_mute_losefocus 0",
             "cl_hud_telemetry_frametime_show 0", "cl_hud_telemetry_ping_show 0",
             "cl_hud_telemetry_net_misdelivery_show 0", "cl_hud_telemetry_net_quality_graph_show 0",
             "cl_hud_telemetry_serverrecvmargin_graph_show 0",
@@ -415,7 +450,7 @@ CRASH_HINT = ("CS2 вылетела при открытии демки — иг�
 
 
 def capture(cs2: Path, hlae: Path, demo_rel: str, clips: list[dict], work: Path, map_name, fps: int, hud: str,
-            width: int, height: int) -> str | None:
+            width: int, height: int, xray: bool = False) -> str | None:
     """Запускает CS2, записывает клипы в work/raw и закрывает игру. Возвращает текст ошибки или None."""
     raw = work / "raw"
     shutil.rmtree(raw, ignore_errors=True)
@@ -429,7 +464,7 @@ def capture(cs2: Path, hlae: Path, demo_rel: str, clips: list[dict], work: Path,
     try:
         con = Console(NETCON_PORT)
         con.log = open(work / "console.log", "w", encoding="utf-8", errors="replace")
-        done = record_clips(con, demo_rel, clips, raw, fps, hud)
+        done = record_clips(con, demo_rel, clips, raw, fps, hud, xray)
         say(f"Записано клипов: {done}")
     except RuntimeError as e:
         error = str(e)
@@ -468,7 +503,8 @@ def finish(args):
         sys.exit(1)
 
 
-def assemble(work: Path, crf: int = 18, no_montage: bool = False, keep_raw: bool = False) -> list[Path]:
+def assemble(work: Path, crf: int = 18, no_montage: bool = False, keep_raw: bool = False,
+             vertical: bool = False) -> list[Path]:
     """Собирает mp4 из записей в work/raw по списку из manifest.json. Возвращает готовые файлы."""
     man_path = work / "manifest.json"
     if not man_path.exists():
@@ -504,7 +540,9 @@ def assemble(work: Path, crf: int = 18, no_montage: bool = False, keep_raw: bool
             cmdline += ["-i", str(video), "-i", str(audio)]
         # Склеиваем отрезки клипа (видео из HLAE + звук отдельным файлом)
         streams = "".join(f"[{2 * k}:v:0][{2 * k + 1}:a:0]" for k in range(len(parts)))
-        cmdline += ["-filter_complex", f"{streams}concat=n={len(parts)}:v=1:a=1[v][a]", "-map", "[v]", "-map", "[a]",
+        # Вертикальное видео 9:16 (Reels, Shorts): вырезаем середину кадра
+        tail = "[v0][a];[v0]crop=trunc(ih*9/16/2)*2:ih[v]" if vertical else "[v][a]"
+        cmdline += ["-filter_complex", f"{streams}concat=n={len(parts)}:v=1:a=1{tail}", "-map", "[v]", "-map", "[a]",
                     "-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-pix_fmt", "yuv420p",
                     "-r", str(man["fps"]), "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-movflags", "+faststart", str(out)]
         subprocess.run(cmdline, check=True)

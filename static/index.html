@@ -233,6 +233,33 @@
   .clip3dwait .spin { width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: clip3dspin .8s linear infinite; flex: none; }
   @keyframes clip3dspin { to { transform: rotate(360deg); } }
   .clip3derr { color: var(--lose); font-size: 14px; }
+  .clip3d.vert { max-width: 360px; margin: 0 auto; }
+  .hcard.h3d { border-color: rgba(45,212,191,.5); }
+  .o3 .o3t { font-size: 12px; color: var(--muted); font-weight: 700; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .o3 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .o3 .seg button { background: #1b1e26; border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 8px 12px;
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+  .o3 .seg button small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .o3 .seg button:hover { border-color: var(--accent); }
+  .o3 .seg button.on { border-color: var(--accent); background: rgba(45,212,191,.14); color: var(--accent); }
+  .o3 .seg.modes button { flex: 1 1 150px; }
+  .o3 .o3grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 18px; }
+  .o3 .o3row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; flex-wrap: wrap; }
+  .o3 select { background: #1b1e26; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; }
+  .o3 .o3kills { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; margin-top: 8px; padding: 4px 10px 8px; }
+  .o3 .o3kills .o3rh { font-size: 11px; color: var(--muted); font-weight: 700; margin: 8px 0 2px; text-transform: uppercase; }
+  .o3 .o3kills label { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; cursor: pointer; }
+  .o3 .o3kills .t { color: var(--muted); width: 36px; font-variant-numeric: tabular-nums; }
+  .o3 .o3kills .v { color: var(--muted); margin-left: auto; }
+  .o3 .o3go { display: flex; align-items: center; gap: 14px; margin-top: 16px; flex-wrap: wrap; }
+  .o3 .o3go .muted { flex: 1 1 260px; }
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; max-width: min(680px, calc(100vw - 32px));
+    background: #14171d; border: 1px solid var(--accent); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45;
+    box-shadow: 0 12px 40px rgba(0,0,0,.55); display: none; align-items: flex-start; gap: 12px; }
+  .toast.err { border-color: var(--lose); }
+  .toast a { color: var(--accent); font-weight: 700; }
+  .toast button { background: none; border: 0; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; margin-left: auto; }
+  @media (max-width: 760px) { .toast { bottom: 84px; } }
   .cmd { display: flex; gap: 6px; margin-top: 5px; }
   .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: #0b0d11; border: 1px solid var(--line);
               border-radius: 8px; padding: 7px 10px; font: 13px ui-monospace, Consolas, monospace; color: #e8c547; }
@@ -1319,7 +1346,7 @@ function renderMatchesPage() {
     const acts = r.saved
       ? `${r.hl ? `<span class="hlchip" title="Хайлайтов в матче">★ ${r.hl}</span>` : ""}` +
         `<button class="delbtn" data-del="${esc(r.saved.id)}" title="Удалить разбор, чтобы загрузить демку заново">🗑</button><span class="chev">›</span>`
-      : `<button class="abtn imp" data-fid="${esc(r.fid)}" title="Выберите скачанную демку этого матча">Загрузить · 2 <span class="coin"></span></button>` +
+      : `<button class="abtn imp" data-fid="${esc(r.fid)}" title="Найти демку этого матча и разобрать">Загрузить · 2 <span class="coin"></span></button>` +
         `<a class="abtn ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Комната ↗</a>`;
     return `<div class="mtr ${r.won === true ? "win" : r.won === false ? "lose" : ""}${r.saved ? " done" : ""}"${r.saved ? ` data-id="${esc(r.saved.id)}"` : ""}>` +
       `<div class="mmap"><span class="micon" style="background:${mapColor(r.map)};--ring:${mapColor(r.map)}">${esc(mapAbbr(r.map))}` +
@@ -1354,9 +1381,85 @@ function renderMatchesPage() {
   }));
   box.querySelectorAll(".abtn.imp").forEach((b) => b.addEventListener("click", (e) => {
     e.stopPropagation();
-    ROW_FACEIT_ID = b.dataset.fid;
-    $("rowFile").click();
+    importFromFaceit(b);
   }));
+}
+
+// ---------- Кнопка «Загрузить» у матча FACEIT ----------
+// Сервер сам достаёт демку: через FACEIT Downloads API или из папки «Загрузки» на этом компьютере.
+// Если демки ещё нет — просим скачать её в комнате матча и ждём: как только файл появится, разбор начнётся сам.
+let IMPORT = null;      // { fid, timer } — какой матч сейчас ждёт демку
+
+function toast(html, isError = false) {
+  let t = $("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
+  t.className = "toast" + (isError ? " err" : "");
+  t.innerHTML = html + `<button id="toastClose" title="Закрыть">×</button>`;
+  t.style.display = "flex";
+  $("toastClose").addEventListener("click", stopImport);
+}
+
+function stopImport() {
+  if (IMPORT) clearInterval(IMPORT.timer);
+  IMPORT = null;
+  if ($("toast")) $("toast").style.display = "none";
+  renderMatchesPage();
+}
+
+function pickDemoFile(fid) {
+  stopImport();
+  ROW_FACEIT_ID = fid;
+  $("rowFile").click();
+}
+
+async function importFromFaceit(btn) {
+  const fid = btn.dataset.fid;
+  const room = btn.parentElement.querySelector("a.abtn.ghost")?.href || "";
+  if (!USER) { ROW_FACEIT_ID = fid; $("rowFile").click(); return; }
+  if (IMPORT) { if (IMPORT.fid === fid) return pickDemoFile(fid); stopImport(); }
+
+  const attempt = async () => {
+    const res = await fetch(`/api/faceit/import?faceit_id=${encodeURIComponent(fid)}`, { method: "POST" });
+    return { res, data: await res.json().catch(() => ({})) };
+  };
+  const finish = (data) => {
+    stopImport();
+    showMatch(data, true);
+    loadHistory();
+    refreshCoins();
+  };
+  const busy = () => {
+    document.querySelectorAll(`.abtn.imp[data-fid="${fid}"]`).forEach((x) => { x.disabled = true; x.textContent = "Разбираю…"; });
+  };
+
+  busy();
+  toast("⏳ Ищу демку и разбираю матч — это может занять около минуты…");
+  $("toastClose").style.display = "none";
+  let first;
+  try { first = await attempt(); } catch { stopImport(); return toast("Нет связи с сервером", true); }
+  if (first.res.ok) return finish(first.data);
+  const need = first.res.status === 409 && first.data.detail?.need_demo;
+  if (!need) { stopImport(); return toast(esc(typeof first.data.detail === "string" ? first.data.detail : `Ошибка сервера (${first.res.status})`), true); }
+  if (!first.data.detail.local) return pickDemoFile(fid);      // сайт открыт не на своём компьютере — выбираем файл вручную
+
+  // Демки нет в «Загрузках»: ждём, пока её скачают в комнате матча
+  IMPORT = { fid, timer: null };
+  renderMatchesPage();
+  document.querySelectorAll(`.abtn.imp[data-fid="${fid}"]`).forEach((x) => { x.textContent = "Жду демку… (выбрать файл)"; });
+  toast(`📥 Демки этого матча нет в «Загрузках». Откройте <a href="${esc(room)}" target="_blank" rel="noopener">комнату матча ↗</a> ` +
+    `и нажмите «Watch demo» — как только файл скачается, разбор начнётся сам.`);
+  let running = false, tries = 0;
+  IMPORT.timer = setInterval(async () => {
+    if (running || !IMPORT || IMPORT.fid !== fid) return;
+    if (++tries > 225) { stopImport(); return; }             // ждём до 15 минут
+    running = true;
+    try {
+      const r = await attempt();
+      if (r.res.ok) finish(r.data);
+      else if (r.res.status !== 409) { stopImport(); toast(esc(typeof r.data.detail === "string" ? r.data.detail : "Не удалось разобрать демку"), true); }
+    } catch { /* сервер перезапускается — попробуем ещё раз */ }
+    running = false;
+  }, 4000);
 }
 
 $("mTabs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
@@ -2596,19 +2699,26 @@ function renderEconomy(data) {
 // Карточки хайлайтов: клик — переход в реплей за 3 секунды до момента
 function renderHighlights(data) {
   const list = data.replay?.highlights || [];
+  // Кнопка «3D-запись» для себя: компиляция, раунд целиком или монтаж из убийств
+  const me3d = data.players.findIndex((p) => isMe(p.name));
+  const my3d = me3d >= 0 ? `<div class="hitem"><button class="hcard h3d" id="open3dMine"><span class="bd cl">🎮</span>` +
+    `<span><div class="hn">3D-запись из CS2</div><div class="hs">Компиляция · раунд · монтаж</div></span></button></div>` : "";
+  const bind3d = () => $("open3dMine")?.addEventListener("click", () => open3d({ player: me3d }));
   if (!list.length) {
-    $("highlights").innerHTML = `<div class="note">В этом матче не нашлось мульти-киллов и клатчей</div>`;
+    $("highlights").innerHTML = my3d + `<div class="note">В этом матче не нашлось мульти-киллов и клатчей</div>`;
+    bind3d();
     return;
   }
   const badge = (t) => (t === "ACE" ? "ace" : t === "4K" ? "k4" : t === "3K" ? "k3" : "cl");
-  $("highlights").innerHTML = list.map((h, i) =>
+  $("highlights").innerHTML = my3d + list.map((h, i) =>
     `<div class="hitem"><button class="hcard" data-i="${i}"><span class="bd ${badge(h.type)}">${esc(h.type)}</span>` +
     `<span><div class="hn">${esc(data.players[h.player]?.name ?? "?")}</div>` +
     `<div class="hs">Раунд ${h.round + 1} · ${esc(h.detail)}</div></span></button>` +
     `<button class="hclip" data-i="${i}" title="Скачать 2D-клип">🎬</button>` +
     `<button class="hclip hcs2" data-i="${i}" title="3D-клип: записать и показать момент из самой CS2">🎮</button></div>`).join("");
-  $("highlights").querySelectorAll(".hcard").forEach((b) =>
+  $("highlights").querySelectorAll(".hcard:not(.h3d)").forEach((b) =>
     b.addEventListener("click", () => jumpTo(list[+b.dataset.i])));
+  bind3d();
   $("highlights").querySelectorAll(".hclip:not(.hcs2)").forEach((b) =>
     b.addEventListener("click", () => recordClip(list[+b.dataset.i])));
   $("highlights").querySelectorAll(".hcs2").forEach((b) =>
@@ -2684,49 +2794,140 @@ async function recordClip(h) {
 }
 
 // ---------- Момент в CS2 ----------
-// Кнопка 🎮: на компьютере, где запущен сайт, сервер сам открывает CS2, записывает момент и отдаёт видео.
-// Если так нельзя (сайт открыт по публичной ссылке или нет CS2) — показываем команды для ручного просмотра.
+// Кнопка 🎮: на компьютере, где запущен сайт, сервер сам открывает CS2, записывает видео и отдаёт его на страницу.
+// Сначала показываем настройки: что записать (момент, все хайлайты, раунд, монтаж из убийств) и как (качество, HUD…).
+// Если запись недоступна (сайт открыт по публичной ссылке или нет CS2) — показываем команды для ручного просмотра.
 let CLIP3D_TIMER = null;
+const CLIP3D = Object.assign({ res: "1080", fps: 60, hud: "full", xray: false, vertical: false },
+  (() => { try { return JSON.parse(localStorage.getItem("clip3d") || "{}"); } catch { return {}; } })());
 
-async function showCs2(h) {
+function showCs2(h) { open3d({ player: h.player, round: h.round, h }); }
+
+async function open3d(ctx) {
   clearInterval(CLIP3D_TIMER);
-  const name = R.data.players[h.player].name;
-  const title = `🎮 ${esc(h.type)} · ${esc(name)} · раунд ${h.round + 1} — клип из CS2`;
+  const data = R.data;
+  const name = data.players[ctx.player].name;
+  const rounds = data.replay.rounds;
+  const kills = (data.kill_events || []).filter((e) => e[2] === ctx.player);         // [раунд, тик, убийца, жертва, …, оружие, хедшот]
+  const mineHl = (data.replay.highlights || []).filter((x) => x.player === ctx.player);
+  const state = { mode: ctx.h ? "moment" : mineHl.length ? "compilation" : "montage", round: ctx.round ?? (kills[0]?.[0] ?? 0), picked: new Set() };
+
   const panel = (body) => {
-    $("cs2Panel").innerHTML = `<div class="cs2"><h3><span>${title}</span><button id="cs2Close" title="Закрыть">×</button></h3>${body}</div>`;
+    $("cs2Panel").innerHTML = `<div class="cs2 o3"><h3><span>🎮 3D-запись из CS2 · ${esc(name)}</span><button id="cs2Close" title="Закрыть">×</button></h3>${body}</div>`;
     $("cs2Close").addEventListener("click", () => { clearInterval(CLIP3D_TIMER); $("cs2Panel").innerHTML = ""; });
   };
-  const manualLink = `<div class="muted" style="margin-top:10px"><a href="#" id="cs2Manual">Показать команды, чтобы открыть момент в CS2 вручную</a></div>`;
-  const bindManual = () => $("cs2Manual")?.addEventListener("click", (e) => { e.preventDefault(); showCs2Manual(h); });
+  const manualLink = ctx.h ? `<div class="muted" style="margin-top:10px"><a href="#" id="cs2Manual">Показать команды, чтобы открыть момент в CS2 вручную</a></div>` : "";
+  const bindManual = () => $("cs2Manual")?.addEventListener("click", (e) => { e.preventDefault(); showCs2Manual(ctx.h); });
   const showVideo = (url) => {
-    panel(`<video class="clip3d" src="${esc(url)}" controls autoplay playsinline></video>` +
-      `<div style="margin-top:10px"><a class="chip btn" href="${esc(url)}" download="${esc(`${R.data.map || "match"}_R${h.round + 1}_${h.type}_${name}.mp4`)}">⬇ Скачать клип</a></div>`);
+    panel(`<video class="clip3d${CLIP3D.vertical ? " vert" : ""}" src="${esc(url)}" controls autoplay playsinline></video>` +
+      `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><a class="chip btn" href="${esc(url)}" download="${esc(`${data.map || "match"}_${name}.mp4`)}">⬇ Скачать видео</a>` +
+      `<button class="chip btn" id="o3Again">⚙ Записать другое</button></div>`);
+    $("o3Again").addEventListener("click", () => open3d(ctx));
   };
-  const showError = (text) => { panel(`<div class="clip3derr">${esc(text)}</div>${manualLink}`); bindManual(); };
+  const showError = (text) => {
+    panel(`<div class="clip3derr">${esc(text)}</div><div style="margin-top:10px"><button class="chip btn" id="o3Again">← Назад к настройкам</button></div>${manualLink}`);
+    $("o3Again").addEventListener("click", () => open3d(ctx));
+    bindManual();
+  };
 
   let status;
   try { status = await (await fetch("/api/clip3d/status")).json(); } catch { status = {}; }
-  if (!status.available || !R.data.id) return showCs2Manual(h);
-  if (!USER) return showError("Войдите через Steam, чтобы записать клип из CS2");
+  if (!status.available || !data.id) {
+    if (ctx.h) return showCs2Manual(ctx.h);
+    panel(`<div class="clip3derr">3D-запись работает только на компьютере, где запущен сайт и установлена CS2.</div>`);
+    return;
+  }
+  if (!USER) return showError("Войдите через Steam, чтобы записывать видео из CS2");
 
-  panel(`<div class="clip3dwait"><span class="spin"></span><span id="clip3dStep">Запускаю CS2…</span></div>` +
-    `<div class="muted" style="margin-top:8px">Откроется окно CS2 — игра сама покажет момент и запишет его (1–2 минуты). Ничего нажимать не нужно, окно лучше не трогать.</div>`);
+  const clock = (e) => { const s = Math.max(0, Math.round((e[1] - rounds[e[0]].start) / TICKRATE)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  const seg = (key, options) => `<div class="seg" data-key="${key}">` + options.map(([v, label]) =>
+    `<button data-v="${esc(String(v))}" class="${String(CLIP3D[key] ?? state[key]) === String(v) ? "on" : ""}">${label}</button>`).join("") + `</div>`;
+
+  const draw = () => {
+    const modes = [];
+    if (ctx.h) modes.push(["moment", `Этот момент<small>${esc(ctx.h.type)} · раунд ${ctx.h.round + 1}</small>`]);
+    if (mineHl.length) modes.push(["compilation", `Компиляция<small>все хайлайты одним видео</small>`]);
+    modes.push(["round", `Раунд целиком<small>от начала до смерти</small>`]);
+    if (kills.length) modes.push(["montage", `Монтаж<small>выбрать убийства</small>`]);
+
+    let extra = "";
+    if (state.mode === "round") {
+      extra = `<div class="o3row"><span>Раунд</span><select id="o3Round">` + rounds.map((r, i) => {
+        const n = kills.filter((e) => e[0] === i).length;
+        return `<option value="${i}"${i === state.round ? " selected" : ""}>Раунд ${i + 1}${n ? ` — убийств: ${n}` : ""}</option>`;
+      }).join("") + `</select></div>`;
+    } else if (state.mode === "montage") {
+      let last = -1;
+      extra = `<div class="o3row"><span>Убийства: выбрано <b id="o3Count">${state.picked.size}</b> из ${kills.length}</span>` +
+        `<span><button class="chip btn" id="o3All">Выбрать все</button> <button class="chip btn" id="o3None">Сбросить</button></span></div><div class="o3kills">` +
+        kills.map((e) => {
+          const head = e[0] !== last ? `<div class="o3rh">Раунд ${e[0] + 1}</div>` : "";
+          last = e[0];
+          return head + `<label><input type="checkbox" data-t="${e[1]}"${state.picked.has(e[1]) ? " checked" : ""}>` +
+            `<span class="t">${clock(e)}</span><span>${esc(String(e[8] || "").replace(/^weapon_/, ""))}${e[9] ? " · в голову" : ""}</span>` +
+            `<span class="v">→ ${esc(data.players[e[3]]?.name ?? "?")}</span></label>`;
+        }).join("") + `</div>`;
+    }
+
+    panel(
+      `<div class="o3t">Что записать</div><div class="seg modes" data-key="mode">` + modes.map(([v, label]) =>
+        `<button data-v="${v}" class="${state.mode === v ? "on" : ""}">${label}</button>`).join("") + `</div>${extra}` +
+      `<div class="o3grid">` +
+      `<div><div class="o3t">Качество</div>${seg("res", [["720", "720p"], ["1080", "1080p Full HD"]])}</div>` +
+      `<div><div class="o3t">Частота кадров</div>${seg("fps", [[60, "60 FPS"], [120, "120 FPS"]])}</div>` +
+      `<div><div class="o3t">Формат</div>${seg("vertical", [[false, "16:9 · YouTube"], [true, "9:16 · Reels, Shorts"]])}</div>` +
+      `<div><div class="o3t">Интерфейс (HUD)</div>${seg("hud", [["full", "Весь"], ["killfeed", "Только киллфид"], ["none", "Без HUD"]])}</div>` +
+      `<div><div class="o3t">Рентген (игроки сквозь стены)</div>${seg("xray", [[false, "Выкл"], [true, "Вкл"]])}</div>` +
+      `</div>` +
+      `<div class="o3go"><button class="abtn imp" id="o3Start">● Записать</button>` +
+      `<span class="muted">Откроется окно CS2 — игра сама покажет и запишет видео. Ничего нажимать не нужно. CS2 и FACEIT AC перед записью закройте.</span></div>`);
+
+    $("cs2Panel").querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+      const key = b.parentElement.dataset.key;
+      let v = b.dataset.v;
+      if (v === "true" || v === "false") v = v === "true";
+      if (key === "fps") v = +v;
+      if (key === "mode") state.mode = v;
+      else { CLIP3D[key] = v; try { localStorage.setItem("clip3d", JSON.stringify(CLIP3D)); } catch { /* ничего */ } }
+      draw();
+    }));
+    $("o3Round")?.addEventListener("change", (e) => { state.round = +e.target.value; });
+    $("cs2Panel").querySelectorAll(".o3kills input").forEach((c) => c.addEventListener("change", () => {
+      c.checked ? state.picked.add(+c.dataset.t) : state.picked.delete(+c.dataset.t);
+      $("o3Count").textContent = state.picked.size;        // список не перерисовываем — иначе собьётся прокрутка
+    }));
+    $("o3All")?.addEventListener("click", () => { kills.forEach((e) => state.picked.add(e[1])); draw(); });
+    $("o3None")?.addEventListener("click", () => { state.picked.clear(); draw(); });
+    $("o3Start").addEventListener("click", start);
+  };
+
+  const start = async () => {
+    if (state.mode === "montage" && !state.picked.size) return alert("Отметьте хотя бы одно убийство");
+    const body = { mode: state.mode, player: ctx.player, round: state.mode === "moment" ? ctx.h.round : state.round,
+      kills: state.mode === "montage" ? [...state.picked] : [], ...CLIP3D };
+    panel(`<div class="clip3dwait"><span class="spin"></span><span id="clip3dStep">Запускаю CS2…</span></div>` +
+      `<div class="muted" style="margin-top:8px" id="clip3dHint">Окно CS2 лучше не трогать, пока идёт запись.</div>`);
+    try {
+      const res = await fetch(`/api/match/${encodeURIComponent(data.id)}/clip3d`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const job = await res.json().catch(() => ({}));
+      if (!res.ok) return showError(typeof job.detail === "string" ? job.detail : `Ошибка сервера (${res.status})`);
+      if (job.state === "done") return showVideo(job.url);
+      if (job.seconds && $("clip3dHint")) $("clip3dHint").textContent += ` Видео ~${job.seconds} с, запись займёт примерно ${Math.ceil((90 + job.seconds * 4) / 60)} мин.`;
+    } catch { return showError("Нет связи с сервером"); }
+
+    CLIP3D_TIMER = setInterval(async () => {
+      let st;
+      try { st = await (await fetch("/api/clip3d/status")).json(); } catch { return; }
+      if (st.state === "running") { if ($("clip3dStep")) $("clip3dStep").textContent = st.step || "Идёт запись…"; return; }
+      clearInterval(CLIP3D_TIMER);
+      if (st.state === "done" && st.url) showVideo(st.url);
+      else showError(st.step || "Не получилось записать видео");
+    }, 1500);
+  };
+
+  draw();
   $("cs2Panel").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  try {
-    const res = await fetch(`/api/match/${encodeURIComponent(R.data.id)}/clip3d?round=${h.round}&player=${h.player}`, { method: "POST" });
-    const job = await res.json().catch(() => ({}));
-    if (!res.ok) return showError(job.detail || `Ошибка сервера (${res.status})`);
-    if (job.state === "done") return showVideo(job.url);
-  } catch { return showError("Нет связи с сервером"); }
-
-  CLIP3D_TIMER = setInterval(async () => {
-    let st;
-    try { st = await (await fetch("/api/clip3d/status")).json(); } catch { return; }
-    if (st.state === "running") { if ($("clip3dStep")) $("clip3dStep").textContent = st.step || "Идёт запись…"; return; }
-    clearInterval(CLIP3D_TIMER);
-    if (st.state === "done" && st.url) showVideo(st.url);
-    else showError(st.step || "Не получилось записать клип");
-  }, 1500);
 }
 
 // Готовим команды консоли: перемотать демку к моменту и включить вид от первого лица нужного игрока

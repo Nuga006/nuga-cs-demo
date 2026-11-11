@@ -24,7 +24,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -654,11 +654,7 @@ def is_local(request: Request) -> bool:
     return bool(request.client) and request.client.host in ("127.0.0.1", "::1")
 
 
-def clip3d_path(mid: str, ri: int, pi: int) -> Path:
-    return clips3d.OUT / mid / "site" / f"r{ri + 1}_p{pi}.mp4"
-
-
-def clip3d_job(mid: str, ri: int, pi: int, clip: dict, data: dict, meta: dict) -> None:
+def clip3d_job(mid: str, out: Path, clips: list, data: dict, meta: dict, opts: dict) -> None:
     job = CLIP_JOB
 
     def step(text: str) -> None:
@@ -680,15 +676,19 @@ def clip3d_job(mid: str, ri: int, pi: int, clip: dict, data: dict, meta: dict) -
         work = clips3d.OUT / mid / "_job"
         shutil.rmtree(work, ignore_errors=True)
         work.mkdir(parents=True)
-        error = clips3d.capture(cs2, hlae, f"nuga/{mid}", [clip], work, data.get("map"), 60, "full", 1920, 1080)
+        width, height = CLIP_RES[opts["res"]]
+        error = clips3d.capture(cs2, hlae, f"nuga/{mid}", clips, work, data.get("map"), opts["fps"], opts["hud"],
+                                width, height, opts["xray"])
         if error:
             raise RuntimeError(error)
-        done = clips3d.assemble(work, no_montage=True)
+        done = clips3d.assemble(work, vertical=opts["vertical"])
         if not done:
             raise RuntimeError("Видео не записалось")
-        out = clip3d_path(mid, ri, pi)
+        if len(done) != len(clips):
+            raise RuntimeError("Записались не все моменты — попробуйте ещё раз")
+        result = work / "montage.mp4" if len(done) > 1 else done[0]      # несколько моментов — берём общий ролик
         out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(done[0]), str(out))
+        shutil.move(str(result), str(out))
         shutil.rmtree(work, ignore_errors=True)
         job.update(state="done", step="Готово", url=f"/clips3d/{mid}/{out.name}")
     except (RuntimeError, SystemExit, OSError, subprocess.CalledProcessError) as e:
@@ -703,35 +703,77 @@ def clip3d_status(request: Request):
     return {"available": is_local(request) and cs2_demo_dir() is not None, **CLIP_JOB}
 
 
+CLIP_RES = {"720": (1280, 720), "1080": (1920, 1080)}
+CLIP_MAX_SECONDS = 600               # длиннее 10 минут за один раз не пишем
+
+
 @app.post("/api/match/{mid}/clip3d")
-def clip3d_start(mid: str, request: Request, round: int = Query(..., ge=0, le=200), player: int = Query(..., ge=0, le=20)):
-    """Записать момент (все убийства игрока в раунде и клатч) в самой CS2. Готовый клип потом отдаётся сразу."""
+def clip3d_start(mid: str, request: Request, body: dict = Body(default={})):
+    """Записать видео в самой CS2. Что писать (mode): moment — хайлайт игрока в раунде, compilation — все его
+    хайлайты одним роликом, round — весь раунд от его лица, montage — выбранные убийства.
+    Настройки: res 720/1080, fps 60/120, hud full/killfeed/none, xray, vertical (9:16).
+    Одинаковый запрос второй раз отдаёт уже готовый клип."""
     require_login(request)
     if not is_local(request):
         raise HTTPException(403, "3D-клипы записываются только на компьютере, где запущен сайт")
     if not MATCH_ID.fullmatch(mid) or not (MATCHES / f"{mid}.json.gz").exists():
         raise HTTPException(404, "Матч не найден")
-    ready = clip3d_path(mid, round, player)
+    try:
+        opts = {
+            "mode": str(body.get("mode", "moment")),
+            "round": int(body.get("round", 0)),
+            "player": int(body.get("player", 0)),
+            "kills": sorted({int(t) for t in (body.get("kills") or [])})[:60],
+            "res": str(body.get("res", "1080")),
+            "fps": int(body.get("fps", 60)),
+            "hud": str(body.get("hud", "full")),
+            "xray": bool(body.get("xray", False)),
+            "vertical": bool(body.get("vertical", False)),
+        }
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Неверные настройки записи")
+    if (opts["mode"] not in ("moment", "compilation", "round", "montage") or opts["res"] not in CLIP_RES
+            or opts["fps"] not in (60, 120) or opts["hud"] not in ("full", "killfeed", "none")):
+        raise HTTPException(400, "Неверные настройки записи")
+
+    key = hashlib.sha256(json.dumps(opts, sort_keys=True).encode()).hexdigest()[:16]
+    ready = clips3d.OUT / mid / "site" / f"{key}.mp4"
     if ready.exists():
         return {"state": "done", "url": f"/clips3d/{mid}/{ready.name}"}
+
     with gzip.open(MATCHES / f"{mid}.json.gz", "rt", encoding="utf-8") as f:
         data = json.load(f)
     meta = json.loads((MATCHES / f"{mid}.meta.json").read_text(encoding="utf-8"))
-    clips = [c for c in clips3d.build_clips(data, None, None, None, 2) if c["round"] == round and c["player"] == player]
+    ri, pi = opts["round"], opts["player"]
+    if not 0 <= pi < len(data.get("players", [])):
+        raise HTTPException(400, "Нет такого игрока")
+    mine = [c for c in clips3d.build_clips(data, None, None, None, 2) if c["player"] == pi]
+    if opts["mode"] == "moment":
+        clips = [c for c in mine if c["round"] == ri]
+    elif opts["mode"] == "compilation":
+        clips = mine
+    elif opts["mode"] == "round":
+        clips = [c for c in [clips3d.round_clip(data, ri, pi)] if c]
+    else:
+        clips = [c for c in [clips3d.kills_clip(data, pi, opts["kills"])] if c]
     if not clips:
-        raise HTTPException(404, "В этом раунде у игрока нет момента для клипа")
+        raise HTTPException(404, "Для такой записи у игрока нет моментов")
+    if sum(c["length"] for c in clips) > CLIP_MAX_SECONDS:
+        raise HTTPException(400, "Слишком длинное видео — выберите меньше моментов")
+
     with CLIP_LOCK:
         if CLIP_JOB.get("state") == "running":
             raise HTTPException(409, "Уже идёт запись другого клипа — дождитесь её конца")
         CLIP_JOB.clear()
-        CLIP_JOB.update(state="running", step="Запускаю CS2…", mid=mid, round=round, player=player)
-        threading.Thread(target=clip3d_job, args=(mid, round, player, clips[0], data, meta), daemon=True).start()
+        CLIP_JOB.update(state="running", step="Запускаю CS2…", mid=mid, key=key,
+                        seconds=round(sum(c["length"] for c in clips)))
+        threading.Thread(target=clip3d_job, args=(mid, ready, clips, data, meta, opts), daemon=True).start()
     return dict(CLIP_JOB)
 
 
 @app.get("/clips3d/{mid}/{name}")
 def clip3d_file(mid: str, name: str):
-    if not MATCH_ID.fullmatch(mid) or not re.fullmatch(r"r\d{1,3}_p\d{1,2}\.mp4", name):
+    if not MATCH_ID.fullmatch(mid) or not re.fullmatch(r"[a-f0-9]{16}\.mp4", name):
         raise HTTPException(404, "Клип не найден")
     path = clips3d.OUT / mid / "site" / name
     if not path.exists():
@@ -761,6 +803,83 @@ def faceit_get(path: str, params: dict | None = None) -> dict:
         raise HTTPException(502, f"FACEIT ответил ошибкой {e.code}")
     except urllib.error.URLError:
         raise HTTPException(502, "Нет связи с FACEIT")
+
+
+# Скачивание демок: FACEIT выдаёт ссылку только ключам с доступом к Downloads API (его одобряют по заявке).
+# Пока доступа нет, на своём компьютере берём демку из папки «Загрузки» — по номеру матча в имени файла.
+FACEIT_DOWNLOAD_API = "https://open.faceit.com/download/v2/demos/download"
+_downloads_denied_until = 0.0        # FACEIT ответил «нет доступа» — какое-то время не спрашиваем снова
+
+
+def faceit_demo_download(faceit_id: str) -> Path | None:
+    """Скачивает демку матча через FACEIT Downloads API в папку uploads. None — у ключа нет доступа."""
+    global _downloads_denied_until
+    if time.time() < _downloads_denied_until:
+        return None
+    urls = faceit_get(f"/matches/{faceit_id}").get("demo_url") or []
+    if not urls:
+        raise HTTPException(404, "У этого матча на FACEIT уже нет демки (они хранятся несколько недель)")
+    req = urllib.request.Request(
+        FACEIT_DOWNLOAD_API, data=json.dumps({"resource_url": urls[0]}).encode("utf-8"),
+        headers={"Authorization": f"Bearer {os.environ.get('FACEIT_API_KEY', '')}",
+                 "Content-Type": "application/json", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as res:
+            link = (json.loads(res.read().decode("utf-8")).get("payload") or {}).get("download_url")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):                 # «no valid scope provided» — заявку на Downloads API ещё не одобрили
+            _downloads_denied_until = time.time() + 3600
+            return None
+        raise HTTPException(502, f"FACEIT не отдал демку (ошибка {e.code})")
+    except urllib.error.URLError:
+        raise HTTPException(502, "Нет связи с FACEIT")
+    if not link or not link.startswith("https://"):
+        raise HTTPException(502, "FACEIT не прислал ссылку на демку")
+
+    suffix = next((x for x in ALLOWED if urllib.parse.urlparse(link).path.lower().endswith(x)), ".dem.zst")
+    raw = UPLOADS / f"{uuid.uuid4().hex}{suffix}"
+    try:
+        with urllib.request.urlopen(link, timeout=60) as res, open(raw, "wb") as out:
+            size = 0
+            while block := res.read(1024 * 1024):
+                size += len(block)
+                if size > MAX_UPLOAD:
+                    raise HTTPException(413, "Демка слишком большая")
+                out.write(block)
+    except (urllib.error.URLError, OSError):
+        raw.unlink(missing_ok=True)
+        raise HTTPException(502, "Не удалось скачать демку с FACEIT")
+    except HTTPException:
+        raw.unlink(missing_ok=True)
+        raise
+    return raw
+
+
+def local_demo_copy(faceit_id: str) -> Path | None:
+    """Демка этого матча из папки «Загрузки» (браузер называет файл номером матча). Копируем — оригинал не трогаем."""
+    for src in sorted((Path.home() / "Downloads").glob(f"*{faceit_id}*")):
+        suffix = next((x for x in ALLOWED if src.name.lower().endswith(x)), None)
+        if suffix and src.is_file() and 0 < src.stat().st_size <= MAX_UPLOAD:
+            raw = UPLOADS / f"{uuid.uuid4().hex}{suffix}"
+            shutil.copyfile(src, raw)
+            return raw
+    return None
+
+
+@app.post("/api/faceit/import")
+def faceit_import(request: Request, faceit_id: str = Query(...)):
+    """Кнопка «Загрузить» у матча: сами достаём демку (FACEIT Downloads API или «Загрузки» на этом компьютере)
+    и разбираем её. Если демки нигде нет — отвечаем 409, сайт попросит скачать её в комнате матча."""
+    steam_id = require_login(request)
+    if not FACEIT_ID_RE.fullmatch(faceit_id):
+        raise HTTPException(400, "Неверный номер матча")
+    local = is_local(request)
+    raw = local_demo_copy(faceit_id) if local else None
+    if raw is None:
+        raw = faceit_demo_download(faceit_id)
+    if raw is None:
+        raise HTTPException(409, {"need_demo": True, "local": local})
+    return run_analysis(raw, steam_id, faceit_id)
 
 
 def my_score(score: str | None, won: bool | None) -> str:
