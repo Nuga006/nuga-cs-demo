@@ -732,6 +732,7 @@
     .mhead .msc { font-size: 48px; }
   }
 </style>
+<link rel="stylesheet" href="/static/social.css?v=1">
 </head>
 <body>
 <header class="topbar">
@@ -744,6 +745,7 @@
       <a class="steambtn" href="/auth/steam">Войти через Steam</a>
     </div>
     <div class="userbar" id="userBar" hidden></div>
+    <span data-lang-slot></span>
   </div>
 </header>
 
@@ -754,11 +756,14 @@
     <a href="/app/stats" data-view="stats"><span class="ni">▮▮</span>Статистика</a>
     <a href="/app/records" data-view="records"><span class="ni">🏆</span>Рекорды</a>
     <a href="/app/clips" data-view="clips"><span class="ni">★</span>Клипы</a>
+    <a href="/app/feed" data-view="feed"><span class="ni">◉</span>Лента</a>
+    <a href="/app/profile" data-view="profile"><span class="ni">☺</span>Профиль</a>
     <a href="/app/upload" data-view="upload"><span class="ni">⇪</span>Загрузить демо</a>
     <div class="nsep">Исследовать</div>
     <a href="/app/compare" data-view="compare"><span class="ni">⚔</span>Сравнение</a>
     <a href="/app/search" data-view="search"><span class="ni">⌕</span>Поиск игрока</a>
     <a href="/app/faq" data-view="faq"><span class="ni">?</span>FAQ</a>
+    <a class="tgnav" id="tgNav" href="#" target="_blank" rel="noopener" hidden><span class="ni">✈</span>Наш Телеграм</a>
     <button class="nmore" id="navMore" type="button"><span class="ni">⋯</span>Ещё</button>
     <div class="nfoot"><a href="/privacy" class="plink2">Конфиденциальность</a><br>Nuga CS Demo · не связан с Valve и FACEIT</div>
   </aside>
@@ -821,6 +826,20 @@
         <div class="seg" id="clipWho"><button data-w="me" class="on">Мои</button><button data-w="all">Все игроки</button></div>
       </div>
       <div class="cgal" id="clipGrid"></div>
+    </section>
+
+    <!-- Лента: опубликованные клипы всех игроков -->
+    <section class="view" data-view="feed">
+      <div class="phead"><div><h1>Лента</h1><div class="psub">Клипы, которые опубликовали игроки</div></div></div>
+      <div class="clipbar">
+        <div class="seg" id="feedScope"><button data-s="all" class="on">Все</button><button data-s="following">Подписки</button></div>
+      </div>
+      <div class="cgal" id="feedGrid"></div>
+    </section>
+
+    <!-- Профиль -->
+    <section class="view" data-view="profile">
+      <div id="profileBox"></div>
     </section>
 
     <!-- Сравнение -->
@@ -989,6 +1008,8 @@
   </div>
 </div>
 
+<script src="/static/i18n.js?v=1"></script>
+<script src="/static/social.js?v=1"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const drop = $("drop"), fileInput = $("file"), statusEl = $("status"), bar = $("bar");
@@ -1163,16 +1184,16 @@ document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("cli
 }));
 
 // ---------- Разделы приложения (боковое меню) ----------
-const VIEWS = ["matches", "stats", "records", "clips", "upload", "compare", "search", "faq"];
+const VIEWS = ["matches", "stats", "records", "clips", "feed", "profile", "upload", "compare", "search", "faq"];
 const VIEW_TITLES = { matches: "Матчи", stats: "Статистика", records: "Рекорды", clips: "Клипы", upload: "Загрузить демо",
-                      compare: "Сравнение", search: "Поиск игрока", faq: "FAQ" };
+                      feed: "Лента", profile: "Профиль", compare: "Сравнение", search: "Поиск игрока", faq: "FAQ" };
 let VIEW = "matches";
 
 function navOn(name) {
   document.querySelectorAll("#sidenav a").forEach((a) => a.classList.toggle("on", a.dataset.view === name));
 }
 
-function showView(name, push = true) {
+function showView(name, push = true, arg) {
   if (!VIEWS.includes(name)) name = "matches";
   VIEW = name;
   stop();
@@ -1185,6 +1206,14 @@ function showView(name, push = true) {
   document.title = `${VIEW_TITLES[name]} — Nuga CS Demo`;
   window.scrollTo({ top: 0 });
   if (name === "compare") initCompare();
+  if (name === "profile") Social.renderProfile(arg);      // arg — Steam ID чужого профиля, без него открываем свой
+  if (name === "feed") Social.renderFeed();
+}
+// Открыть то, что написано в адресе: /u/<steam id> — профиль игрока, иначе раздел приложения
+function showFromPath() {
+  const u = location.pathname.match(/^\/u\/(\d{17})$/);
+  if (u) showView("profile", false, u[1]);
+  else showView(viewFromPath(), false);
 }
 const showHome = () => showView("matches", false);
 const viewFromPath = () => (location.pathname.match(/^\/app\/([a-z]+)/) || [])[1] || "matches";
@@ -1556,11 +1585,15 @@ function renderClips() {
     return `<button class="clipc" data-i="${i}" style="--mc:${mapColor(c.m.map)}">` +
       `<div class="thumb"><span class="rad" style="background-image:url('/static/maps/${map}.png')"></span>` +
       `<img class="lg" src="/static/maps/icons/${map}.png" alt="" loading="lazy" onerror="this.remove()">` +
-      `<span class="bd ${badge(c.h.t)}">${esc(c.h.t)}</span><span class="play">▶</span></div>` +
+      `<span class="bd ${badge(c.h.t)}">${esc(c.h.t)}</span><span class="csave" data-i="${i}" title="Сохранить в профиль">＋</span><span class="play">▶</span></div>` +
       `<div class="info"><div class="who ${isMe(c.h.p) ? "me" : ""}">${esc(c.h.p)}</div>` +
       `<div class="det">${esc(mapTitle(c.m.map))} · раунд ${c.h.r + 1} · ${date(c.m.created)}</div></div></button>`;
   }).join("");
-  box.querySelectorAll(".clipc").forEach((b) => b.addEventListener("click", () => openClip(list[+b.dataset.i])));
+  box.querySelectorAll(".clipc").forEach((b) => b.addEventListener("click", async (e) => {
+    const c = list[+b.dataset.i], save = e.target.closest(".csave");
+    if (!save) return openClip(c);
+    if (await Social.saveClip({ match_id: c.m.id, round: c.h.r, tick: c.h.k, type: c.h.t })) { save.classList.add("ok"); save.textContent = "✓"; }
+  }));
 }
 
 // Открыть матч и сразу запустить реплей этого момента
@@ -2036,7 +2069,7 @@ async function copyLink(id) {
 window.addEventListener("popstate", () => {
   const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
   if (m) openMatch(m[1], false);
-  else showView(viewFromPath(), false);
+  else showFromPath();
 });
 
 // ---------- Поиск игрока FACEIT ----------
@@ -2714,13 +2747,18 @@ function renderHighlights(data) {
     `<div class="hitem"><button class="hcard" data-i="${i}"><span class="bd ${badge(h.type)}">${esc(h.type)}</span>` +
     `<span><div class="hn">${esc(data.players[h.player]?.name ?? "?")}</div>` +
     `<div class="hs">Раунд ${h.round + 1} · ${esc(h.detail)}</div></span></button>` +
+    (data.id ? `<button class="hclip hsave" data-i="${i}" title="Сохранить в профиль">＋</button>` : "") +
     `<button class="hclip" data-i="${i}" title="Скачать 2D-клип">🎬</button>` +
     `<button class="hclip hcs2" data-i="${i}" title="3D-клип: записать и показать момент из самой CS2">🎮</button></div>`).join("");
   $("highlights").querySelectorAll(".hcard:not(.h3d)").forEach((b) =>
     b.addEventListener("click", () => jumpTo(list[+b.dataset.i])));
   bind3d();
-  $("highlights").querySelectorAll(".hclip:not(.hcs2)").forEach((b) =>
+  $("highlights").querySelectorAll(".hclip:not(.hcs2):not(.hsave)").forEach((b) =>
     b.addEventListener("click", () => recordClip(list[+b.dataset.i])));
+  $("highlights").querySelectorAll(".hsave").forEach((b) => b.addEventListener("click", async () => {
+    const h = list[+b.dataset.i];
+    if (await Social.saveClip({ match_id: data.id, round: h.round, tick: h.tick, type: h.type })) b.textContent = "✓";
+  }));
   $("highlights").querySelectorAll(".hcs2").forEach((b) =>
     b.addEventListener("click", () => showCs2(list[+b.dataset.i])));
   $("cs2Panel").innerHTML = "";
@@ -2821,8 +2859,15 @@ async function open3d(ctx) {
   const showVideo = (url) => {
     panel(`<video class="clip3d${CLIP3D.vertical ? " vert" : ""}" src="${esc(url)}" controls autoplay playsinline></video>` +
       `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><a class="chip btn" href="${esc(url)}" download="${esc(`${data.map || "match"}_${name}.mp4`)}">⬇ Скачать видео</a>` +
+      `<button class="chip btn" id="o3Save">＋ Сохранить в профиль</button>` +
       `<button class="chip btn" id="o3Again">⚙ Записать другое</button></div>`);
     $("o3Again").addEventListener("click", () => open3d(ctx));
+    $("o3Save").addEventListener("click", async () => {
+      const h = state.mode === "moment" ? ctx.h : null;       // один хайлайт — прикрепляем видео к нему, иначе сохраняем как 3D-клип
+      const saved = await Social.saveClip({ match_id: data.id, video: url, player: name,
+        ...(h ? { round: h.round, tick: h.tick, type: h.type } : {}) });
+      if (saved) $("o3Save").textContent = "✓ В профиле";
+    });
   };
   const showError = (text) => {
     panel(`<div class="clip3derr">${esc(text)}</div><div style="margin-top:10px"><button class="chip btn" id="o3Again">← Назад к настройкам</button></div>${manualLink}`);
@@ -3292,11 +3337,11 @@ $("navMore").addEventListener("click", (e) => { e.stopPropagation(); $("sidenav"
 document.addEventListener("click", (e) => { if (!e.target.closest(".nmore")) $("sidenav").classList.remove("more"); });
 
 // ---------- При открытии страницы ----------
-loadUser().finally(() => { loadHistory(); if (VIEW === "compare") initCompare(); });
+loadUser().finally(() => { loadHistory(); if (VIEW === "compare") initCompare(); Social.onUser(); });
 {
   const m = location.pathname.match(/^\/match\/([a-f0-9]{12})$/);
   if (m) openMatch(m[1], false);
-  else showView(viewFromPath(), false);
+  else showFromPath();
 }
 </script>
 </body>

@@ -1,0 +1,110 @@
+/* Nuga CS Demo — профиль, лента, уведомления, «Наш Телеграм» */
+
+/* Колокольчик в шапке */
+.bellbtn { position: relative; background: #1b1e26; border: 1px solid var(--line); color: var(--text); border-radius: 999px;
+           width: 36px; height: 34px; font-size: 15px; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.bellbtn:hover { border-color: #3a3f4b; }
+.bellbtn .bdg { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px;
+                background: var(--lose); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+.bellbtn .bdg[hidden] { display: none; }
+.bellpanel { position: fixed; top: 64px; right: 16px; z-index: 40; width: min(380px, calc(100vw - 24px)); max-height: 70vh; overflow: auto;
+             background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+             display: none; }
+.bellpanel.on { display: block; }
+.bellpanel h3 { margin: 0; padding: 14px 16px 10px; font-size: 16px; }
+.nitem { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: none; border: 0;
+         border-top: 1px solid var(--line); color: var(--text); font: inherit; font-size: 14px; padding: 11px 16px; cursor: pointer; }
+.nitem:hover { background: #1f232c; }
+.nitem.new { background: rgba(45,212,191,.07); }
+.nitem img, .nitem .noav { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: #2a2f3a; flex: none; }
+.nitem small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+.nempty { padding: 6px 16px 20px; color: var(--muted); font-size: 14px; }
+
+.userbar img, .userbar .ut { cursor: pointer; }
+
+/* «Наш Телеграм» в меню */
+.sidenav a.tgnav { color: #6cc4f5; }
+.sidenav a.tgnav[hidden] { display: none; }
+.sidenav a.tgnav:hover { color: #9bd8fa; }
+
+/* Профиль */
+.pfhead { display: flex; gap: 26px; align-items: center; background: #15171d; border: 1px solid var(--line); border-radius: 22px;
+          padding: 24px 26px; margin-bottom: 16px; flex-wrap: wrap; }
+.pfhead .pfav { width: 108px; height: 108px; border-radius: 50%; object-fit: cover; background: #2a2f3a; flex: none;
+                border: 3px solid rgba(45,212,191,.5); }
+.pfmain { flex: 1; min-width: 240px; }
+.pftop { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pfname { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin-right: 6px; overflow-wrap: anywhere; }
+.pfsub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.pfstats { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.pfst { background: none; border: 1px solid transparent; border-radius: 12px; color: var(--text); font: inherit; padding: 6px 14px 6px 0;
+        display: flex; gap: 7px; align-items: baseline; cursor: pointer; }
+.pfst b { font-size: 20px; font-weight: 800; }
+.pfst span { color: var(--muted); }
+.pfst:disabled { cursor: default; }
+.pfst:not(:disabled):hover span { color: var(--text); }
+.pftg { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 14px; }
+.pftg .pbtn { padding: 7px 14px; font-size: 13px; }
+.pbtn.small { padding: 7px 14px; font-size: 13px; }
+
+.pclip { display: flex; flex-direction: column; min-width: 0; }
+.pclip .clipc { width: 100%; flex: 1; color: var(--text); font: inherit; }
+.pclip .clipc .vid { position: absolute; right: 12px; top: 12px; font-size: 11px; font-weight: 800; border-radius: 6px; padding: 3px 7px;
+                     background: rgba(0,0,0,.6); color: #fff; }
+.pclip .auth { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 13px; font-weight: 700; margin-top: 4px; }
+.pclip .auth img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; background: #2a2f3a; }
+.pacts { display: flex; gap: 6px; margin-top: 6px; }
+.pacts button { flex: 1; background: #1b1e26; border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 7px 8px;
+                font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.pacts button:hover { border-color: #3a3f4b; }
+.pacts button.go { background: rgba(45,212,191,.15); border-color: transparent; color: var(--accent); }
+.pacts button.ic { flex: 0 0 40px; }
+.pacts button.ic.del:hover { border-color: var(--lose); color: var(--lose); }
+.pfempty { background: #15171d; border: 1px dashed var(--line); border-radius: 18px; padding: 40px 20px; text-align: center; color: var(--muted); }
+.pfempty .pbtn { margin-top: 14px; }
+
+/* Окна: список людей, выбор клипа, видео */
+.smodal .mbox.wide { width: min(760px, 100%); }
+.urow { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; border-top: 1px solid var(--line);
+        color: var(--text); font: inherit; padding: 10px 2px; cursor: pointer; text-align: left; }
+.urow:first-child { border-top: 0; }
+.urow:hover b { color: var(--accent); }
+.urow img, .urow .noav { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #2a2f3a; flex: none; }
+.urow small { display: block; color: var(--muted); }
+.pickc { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding: 10px 0; flex-wrap: wrap; }
+.pickc:first-child { border-top: 0; }
+.pickc .bd { font-size: 13px; font-weight: 800; border-radius: 8px; padding: 4px 9px; background: rgba(45,212,191,.15); color: var(--accent); }
+.pickc .tx { flex: 1; min-width: 140px; }
+.pickc .tx small { display: block; color: var(--muted); }
+.pickc button { background: #1b1e26; border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 7px 12px;
+                font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.pickc button.go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.pickc button:disabled { opacity: .6; cursor: default; }
+.svideo { width: 100%; max-height: 70vh; border-radius: 12px; background: #000; display: block; margin-top: 12px; }
+
+/* Кнопка «сохранить в профиль» на карточках клипов и хайлайтов */
+.clipc .csave { position: absolute; left: 12px; bottom: 12px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+                background: rgba(0,0,0,.55); color: #fff; font-size: 18px; font-weight: 700; }
+.clipc .csave:hover { background: var(--accent); color: var(--on-accent); }
+.clipc .csave.ok { background: var(--win); color: #0b0c10; }
+
+@media (max-width: 760px) {
+  .pfhead { padding: 18px 16px; gap: 16px; }
+  .pfhead .pfav { width: 76px; height: 76px; }
+  .pfname { font-size: 22px; }
+  .pfst { padding: 4px 10px 4px 0; }
+  .bellpanel { top: 60px; right: 12px; }
+  .cgal { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  /* Новые разделы — тоже в выпадающем «Ещё» */
+  .sidenav a[data-view="feed"], .sidenav a[data-view="profile"], .sidenav a.tgnav { display: none; }
+  .sidenav.more a[data-view="feed"], .sidenav.more a[data-view="profile"], .sidenav.more a.tgnav:not([hidden]) {
+    display: flex; position: fixed; right: 10px; width: 190px; flex-direction: row; gap: 10px; justify-content: flex-start;
+    font-size: 15px; padding: 12px 14px; background: #1b1e26; border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+  .sidenav.more a[data-view="feed"]    { bottom: calc(352px + env(safe-area-inset-bottom)); }
+  .sidenav.more a[data-view="profile"] { bottom: calc(406px + env(safe-area-inset-bottom)); }
+  .sidenav.more a.tgnav:not([hidden])  { bottom: calc(460px + env(safe-area-inset-bottom)); color: #6cc4f5; }
+}
+@media (max-width: 600px) {
+  .userbar { gap: 7px; }
+  .userbar a.out { padding: 5px 9px; font-size: 12px; }
+}

@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import clips3d
+import telegram_bot
 from analyzer import analyze_demo, prepare_demo
 
 BASE = Path(__file__).parent
@@ -77,7 +78,7 @@ START_COINS = 20        # подарок при первом входе
 DAILY_BONUS = 3         # ежедневный бонус
 ANALYSIS_PRICE = 2      # разбор новой демки (повторное открытие бесплатно)
 
-DB_PATH = BASE / "nuga.db"     # файл базы SQLite — в .gitignore, там данные пользователей
+DB_PATH = Path(os.environ.get("NUGA_DB") or BASE / "nuga.db")   # файл базы SQLite — в .gitignore, там данные пользователей
 
 
 def db() -> sqlite3.Connection:
@@ -114,7 +115,55 @@ with closing(db()) as _con, _con:
             match_id TEXT NOT NULL,
             PRIMARY KEY (steam_id, match_id)
         );
+        CREATE TABLE IF NOT EXISTS follows (
+            follower TEXT NOT NULL,
+            target   TEXT NOT NULL,
+            ts       INTEGER NOT NULL,
+            PRIMARY KEY (follower, target)
+        );
+        CREATE TABLE IF NOT EXISTS clips (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            steam_id  TEXT NOT NULL,
+            match_id  TEXT NOT NULL,
+            round     INTEGER NOT NULL,
+            tick      INTEGER NOT NULL,
+            type      TEXT NOT NULL,
+            player    TEXT NOT NULL DEFAULT '',
+            detail    TEXT NOT NULL DEFAULT '',
+            map       TEXT NOT NULL DEFAULT '',
+            title     TEXT NOT NULL DEFAULT '',
+            video     TEXT NOT NULL DEFAULT '',
+            public    INTEGER NOT NULL DEFAULT 0,
+            created   INTEGER NOT NULL,
+            published INTEGER,
+            UNIQUE (steam_id, match_id, round, tick, type)
+        );
+        CREATE TABLE IF NOT EXISTS notifications (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            steam_id TEXT NOT NULL,
+            kind     TEXT NOT NULL,
+            actor    TEXT,
+            clip_id  INTEGER,
+            ts       INTEGER NOT NULL,
+            read     INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS tg_links (
+            steam_id TEXT PRIMARY KEY,
+            chat_id  INTEGER NOT NULL,
+            ts       INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS tg_codes (
+            code     TEXT PRIMARY KEY,
+            steam_id TEXT NOT NULL,
+            expires  INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kv (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
     """)
+    if "avatar" not in {r["name"] for r in _con.execute("PRAGMA table_info(users)")}:
+        _con.execute("ALTER TABLE users ADD COLUMN avatar TEXT")      # аватар нужен для публичного профиля
 
 
 # ---------------- Резервные копии ----------------
@@ -443,6 +492,12 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
             dem.unlink(missing_ok=True)
 
 
+@app.get("/u/{steam_id}")
+def profile_page(steam_id: str):
+    """Ссылка на профиль игрока — та же страница, она сама откроет профиль."""
+    return FileResponse(BASE / "static" / "index.html")
+
+
 @app.get("/match/{mid}")
 def match_page(mid: str):
     """Ссылка на конкретный матч открывает ту же страницу — она сама загрузит разбор."""
@@ -525,6 +580,7 @@ def delete_match(mid: str, request: Request):
     meta_path.unlink(missing_ok=True)
     with closing(db()) as con, con:
         con.execute("DELETE FROM user_matches WHERE match_id = ?", (mid,))
+        con.execute("DELETE FROM clips WHERE match_id = ?", (mid,))
         con.execute("INSERT OR IGNORE INTO free_reanalysis (steam_id, match_id) VALUES (?, ?)", (steam_id, mid))
     return {"ok": True}
 
@@ -1123,6 +1179,11 @@ def delete_account(request: Request):
         con.execute("DELETE FROM coin_log WHERE steam_id = ?", (steam_id,))
         con.execute("DELETE FROM user_matches WHERE steam_id = ?", (steam_id,))
         con.execute("DELETE FROM users WHERE steam_id = ?", (steam_id,))
+        con.execute("DELETE FROM follows WHERE follower = ? OR target = ?", (steam_id, steam_id))
+        con.execute("DELETE FROM clips WHERE steam_id = ?", (steam_id,))
+        con.execute("DELETE FROM notifications WHERE steam_id = ? OR actor = ?", (steam_id, steam_id))
+        con.execute("DELETE FROM tg_links WHERE steam_id = ?", (steam_id,))
+        con.execute("DELETE FROM tg_codes WHERE steam_id = ?", (steam_id,))
     PROFILE_CACHE.pop(steam_id, None)
     response = Response(json.dumps({"ok": True}), media_type="application/json")
     response.delete_cookie(SESSION_COOKIE)
@@ -1187,8 +1248,8 @@ def me(request: Request):
     PROFILE_CACHE[steam_id] = (time.time() + 600, profile)
     get_user(steam_id)
     with closing(db()) as con, con:      # запоминаем имя и ник FACEIT — по нику находим «мои матчи»
-        con.execute("UPDATE users SET name = ?, faceit = ? WHERE steam_id = ?",
-                    (profile["name"], (profile["faceit"] or {}).get("nickname"), steam_id))
+        con.execute("UPDATE users SET name = ?, faceit = ?, avatar = ? WHERE steam_id = ?",
+                    (profile["name"], (profile["faceit"] or {}).get("nickname"), profile["avatar"], steam_id))
     return with_coins(profile)
 
 
@@ -1221,3 +1282,362 @@ def daily_bonus(request: Request):
             raise HTTPException(409, "Бонус сегодня уже получен — приходите завтра")
     change_coins(steam_id, DAILY_BONUS, "Ежедневный бонус")
     return coins(request)
+
+
+# ---------------- Профили, подписки, клипы и уведомления ----------------
+
+STEAM_ID64 = re.compile(r"\d{17}")
+MAX_CLIPS = 300                      # столько клипов можно держать в одном профиле
+CLIP_VIDEO_RE = re.compile(r"/clips3d/([a-f0-9]{12})/([a-f0-9]{16})\.mp4")
+SITE_URL = (os.environ.get("SITE_URL") or "").rstrip("/")     # постоянный адрес сайта — для ссылок в Telegram
+
+
+def user_row(steam_id: str) -> dict | None:
+    """Пользователь из базы без создания нового (для чужих профилей)."""
+    if not STEAM_ID64.fullmatch(steam_id or ""):
+        return None
+    with closing(db()) as con:
+        row = con.execute("SELECT * FROM users WHERE steam_id = ?", (steam_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def public_user(u: dict) -> dict:
+    return {"steam_id": u["steam_id"], "name": u.get("name") or u["steam_id"], "avatar": u.get("avatar"),
+            "faceit": u.get("faceit")}
+
+
+def clip_dict(row) -> dict:
+    c = dict(row)
+    c["public"] = bool(c["public"])
+    return c
+
+
+def clip_caption(c: dict) -> str:
+    """Подпись клипа: своя, а если её нет — «ACE · Nuga · Mirage»."""
+    if c.get("title"):
+        return c["title"]
+    kind = "3D-клип" if c["type"] == "3D" else c["type"]
+    return " · ".join(x for x in (kind, c.get("player"), (c.get("map") or "").replace("de_", "").capitalize()) if x)
+
+
+def notify(steam_id: str, kind: str, actor: str | None = None, clip_id: int | None = None, text: str = "",
+           link: str = "") -> None:
+    """Уведомление на сайте (колокольчик) и, если привязан Telegram, сообщением от бота."""
+    with closing(db()) as con, con:
+        con.execute("INSERT INTO notifications (steam_id, kind, actor, clip_id, ts) VALUES (?, ?, ?, ?, ?)",
+                    (steam_id, kind, actor, clip_id, int(time.time())))
+        con.execute("DELETE FROM notifications WHERE steam_id = ? AND id NOT IN "
+                    "(SELECT id FROM notifications WHERE steam_id = ? ORDER BY id DESC LIMIT 100)", (steam_id, steam_id))
+        chat = con.execute("SELECT chat_id FROM tg_links WHERE steam_id = ?", (steam_id,)).fetchone()
+    if chat and text:
+        telegram_bot.send_message(chat["chat_id"], text, f"{SITE_URL}{link}" if SITE_URL and link else None)
+
+
+@app.get("/api/config")
+def site_config():
+    """Что показать на сайте: ссылка «Наш Телеграм» и имя бота (если они настроены в .env)."""
+    return {"telegram": telegram_bot.channel_url(), "bot": telegram_bot.bot_username()}
+
+
+@app.get("/api/profile/{steam_id}")
+def get_profile(steam_id: str, request: Request):
+    """Профиль игрока: подписчики, подписки, опубликованные клипы. Владельцу — ещё и личные клипы."""
+    u = user_row(steam_id)
+    if not u:
+        raise HTTPException(404, "Профиль не найден")
+    viewer = read_session(request)
+    is_me = viewer == steam_id
+    with closing(db()) as con:
+        followers = con.execute("SELECT COUNT(*) FROM follows WHERE target = ?", (steam_id,)).fetchone()[0]
+        following = con.execute("SELECT COUNT(*) FROM follows WHERE follower = ?", (steam_id,)).fetchone()[0]
+        is_following = bool(viewer) and con.execute(
+            "SELECT 1 FROM follows WHERE follower = ? AND target = ?", (viewer, steam_id)).fetchone() is not None
+        rows = con.execute("SELECT * FROM clips WHERE steam_id = ?" + ("" if is_me else " AND public = 1") +
+                           " ORDER BY COALESCE(published, created) DESC, id DESC", (steam_id,)).fetchall()
+        tg = is_me and con.execute("SELECT 1 FROM tg_links WHERE steam_id = ?", (steam_id,)).fetchone() is not None
+    clips = [clip_dict(r) for r in rows]
+    out = public_user(u) | {
+        "followers": followers, "following": following, "is_me": is_me, "is_following": is_following,
+        "logged_in": bool(viewer), "created": u["created"],
+        "clips": [c for c in clips if c["public"]],
+        "posts": sum(c["public"] for c in clips),
+    }
+    if is_me:
+        out["private"] = [c for c in clips if not c["public"]]
+        out["telegram"] = {"available": telegram_bot.enabled(), "linked": tg}
+    return out
+
+
+@app.get("/api/profile/{steam_id}/follows")
+def profile_follows(steam_id: str, kind: str = Query("followers")):
+    """Список подписчиков (followers) или подписок (following)."""
+    if not user_row(steam_id):
+        raise HTTPException(404, "Профиль не найден")
+    a, b = ("follower", "target") if kind == "followers" else ("target", "follower")
+    with closing(db()) as con:
+        rows = con.execute(f"SELECT u.* FROM follows f JOIN users u ON u.steam_id = f.{a} "
+                           f"WHERE f.{b} = ? ORDER BY f.ts DESC LIMIT 200", (steam_id,)).fetchall()
+    return [public_user(dict(r)) for r in rows]
+
+
+@app.post("/api/profile/{steam_id}/follow")
+def follow(steam_id: str, request: Request):
+    me_id = require_login(request)
+    if me_id == steam_id:
+        raise HTTPException(400, "На себя подписаться нельзя")
+    if not user_row(steam_id):
+        raise HTTPException(404, "Профиль не найден")
+    my = get_user(me_id)
+    with closing(db()) as con, con:
+        new = con.execute("INSERT OR IGNORE INTO follows (follower, target, ts) VALUES (?, ?, ?)",
+                          (me_id, steam_id, int(time.time()))).rowcount == 1
+        # Подписался-отписался-подписался — второе уведомление за сутки не шлём
+        recent = con.execute("SELECT 1 FROM notifications WHERE steam_id = ? AND kind = 'follow' AND actor = ? AND ts > ?",
+                             (steam_id, me_id, int(time.time()) - 86400)).fetchone()
+    if new and not recent:
+        notify(steam_id, "follow", actor=me_id, link=f"/u/{me_id}",
+               text=f"👤 <b>{telegram_bot.esc(my.get('name') or me_id)}</b> подписался на вас в Nuga CS Demo")
+    return {"ok": True}
+
+
+@app.delete("/api/profile/{steam_id}/follow")
+def unfollow(steam_id: str, request: Request):
+    me_id = require_login(request)
+    with closing(db()) as con, con:
+        con.execute("DELETE FROM follows WHERE follower = ? AND target = ?", (me_id, steam_id))
+    return {"ok": True}
+
+
+@app.post("/api/clips")
+def save_clip(request: Request, body: dict = Body(...)):
+    """Сохранить момент матча в свой профиль (в «Личные»). video — адрес записанного 3D-клипа, если он есть."""
+    steam_id = require_login(request)
+    mid = str(body.get("match_id", ""))
+    meta_path = MATCHES / f"{mid}.meta.json"
+    if not MATCH_ID.fullmatch(mid) or not meta_path.exists():
+        raise HTTPException(404, "Матч не найден")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    video = str(body.get("video") or "")
+    vm = CLIP_VIDEO_RE.fullmatch(video) if video else None
+    if video and (not vm or vm.group(1) != mid or not (clips3d.OUT / mid / "site" / f"{vm.group(2)}.mp4").exists()):
+        raise HTTPException(400, "Видео не найдено")
+    try:
+        rnd, tick, kind = int(body.get("round", -1)), int(body.get("tick", 0)), str(body.get("type", ""))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Неверный клип")
+    h = next((x for x in meta.get("hl", []) if x.get("r") == rnd and x.get("k") == tick and x.get("t") == kind), None)
+    if h:
+        player, detail = str(h.get("p", "")), str(h.get("d", ""))
+    elif vm:                                     # компиляция, раунд или монтаж — не один хайлайт, а просто видео
+        rnd, tick, kind, detail = -1, int(vm.group(2)[:7], 16), "3D", ""
+        names = [str(s.get("name", "")) for s in meta.get("stats", [])]
+        player = str(body.get("player", "")) if str(body.get("player", "")) in names else ""
+    else:
+        raise HTTPException(400, "В этом матче нет такого момента")
+    with closing(db()) as con, con:
+        if con.execute("SELECT COUNT(*) FROM clips WHERE steam_id = ?", (steam_id,)).fetchone()[0] >= MAX_CLIPS:
+            raise HTTPException(400, f"В профиле уже {MAX_CLIPS} клипов — удалите лишние")
+        con.execute(
+            "INSERT INTO clips (steam_id, match_id, round, tick, type, player, detail, map, video, created) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (steam_id, match_id, round, tick, type) DO UPDATE SET "
+            "video = CASE WHEN excluded.video != '' THEN excluded.video ELSE clips.video END",
+            (steam_id, mid, rnd, tick, kind, player, detail, str(meta.get("map", "")), video, int(time.time())))
+        row = con.execute("SELECT * FROM clips WHERE steam_id = ? AND match_id = ? AND round = ? AND tick = ? AND type = ?",
+                          (steam_id, mid, rnd, tick, kind)).fetchone()
+    return clip_dict(row)
+
+
+def own_clip(con, cid: int, steam_id: str) -> dict:
+    row = con.execute("SELECT * FROM clips WHERE id = ? AND steam_id = ?", (cid, steam_id)).fetchone()
+    if not row:
+        raise HTTPException(404, "Клип не найден")
+    return dict(row)
+
+
+@app.post("/api/clips/{cid}/publish")
+def publish_clip(cid: int, request: Request, body: dict = Body(default={})):
+    """Опубликовать клип (public: true) или вернуть в личные (false). title — подпись, до 80 символов.
+    При первой публикации подписчики получают уведомление, а клип уходит в Telegram-канал."""
+    steam_id = require_login(request)
+    public = bool(body.get("public", True))
+    with closing(db()) as con, con:
+        clip = own_clip(con, cid, steam_id)
+        title = str(body["title"]).strip()[:80] if body.get("title") is not None else clip["title"]
+        first = public and clip["published"] is None
+        con.execute("UPDATE clips SET public = ?, title = ?, published = COALESCE(published, ?) WHERE id = ?",
+                    (int(public), title, int(time.time()) if public else None, cid))
+        clip = clip_dict(con.execute("SELECT * FROM clips WHERE id = ?", (cid,)).fetchone())
+        followers = [r["follower"] for r in con.execute("SELECT follower FROM follows WHERE target = ?", (steam_id,))] if first else []
+    if first:
+        author = get_user(steam_id).get("name") or steam_id
+        caption = clip_caption(clip)
+        for f in followers:
+            notify(f, "clip", actor=steam_id, clip_id=cid, link=f"/u/{steam_id}",
+                   text=f"🎬 <b>{telegram_bot.esc(author)}</b> опубликовал клип: {telegram_bot.esc(caption)}")
+        video = None
+        if clip["video"]:
+            vm = CLIP_VIDEO_RE.fullmatch(clip["video"])
+            video = clips3d.OUT / vm.group(1) / "site" / f"{vm.group(2)}.mp4" if vm else None
+        telegram_bot.post_clip(author, caption, clip["detail"],
+                               f"{SITE_URL}/u/{steam_id}?clip={cid}" if SITE_URL else None, video)
+    return clip
+
+
+@app.delete("/api/clips/{cid}")
+def delete_clip(cid: int, request: Request):
+    steam_id = require_login(request)
+    with closing(db()) as con, con:
+        own_clip(con, cid, steam_id)
+        con.execute("DELETE FROM clips WHERE id = ?", (cid,))
+        con.execute("DELETE FROM notifications WHERE clip_id = ?", (cid,))
+    return {"ok": True}
+
+
+def recent_public_clips(limit: int, only_from: str | None = None, since: int = 0) -> list[dict]:
+    """Последние опубликованные клипы с автором. only_from — только от тех, на кого подписан этот игрок."""
+    sql = ("SELECT c.*, u.name AS author, u.avatar AS author_avatar FROM clips c JOIN users u ON u.steam_id = c.steam_id "
+           "WHERE c.public = 1 AND c.published >= ?")
+    args: list = [since]
+    if only_from:
+        sql += " AND c.steam_id IN (SELECT target FROM follows WHERE follower = ?)"
+        args.append(only_from)
+    with closing(db()) as con:
+        return [clip_dict(r) for r in con.execute(sql + " ORDER BY c.published DESC, c.id DESC LIMIT ?", (*args, limit))]
+
+
+@app.get("/api/feed")
+def feed(request: Request, scope: str = Query("all")):
+    """Лента: опубликованные клипы всех игроков (all) или только тех, на кого я подписан (following)."""
+    viewer = read_session(request)
+    if scope == "following":
+        return recent_public_clips(60, only_from=viewer) if viewer else []
+    return recent_public_clips(60)
+
+
+@app.get("/api/notifications")
+def notifications(request: Request):
+    steam_id = read_session(request)
+    if not steam_id:
+        return {"unread": 0, "items": []}
+    with closing(db()) as con:
+        rows = con.execute(
+            "SELECT n.id, n.kind, n.ts, n.read, n.actor, n.clip_id, u.name AS actor_name, u.avatar AS actor_avatar, "
+            "c.title, c.type, c.player, c.map FROM notifications n LEFT JOIN users u ON u.steam_id = n.actor "
+            "LEFT JOIN clips c ON c.id = n.clip_id WHERE n.steam_id = ? ORDER BY n.id DESC LIMIT 30", (steam_id,)).fetchall()
+        unread = con.execute("SELECT COUNT(*) FROM notifications WHERE steam_id = ? AND read = 0", (steam_id,)).fetchone()[0]
+    items = []
+    for r in rows:
+        r = dict(r)
+        clip = clip_caption(r) if r["clip_id"] and r["type"] else ""
+        items.append({"id": r["id"], "kind": r["kind"], "ts": r["ts"], "read": bool(r["read"]), "actor": r["actor"],
+                      "actor_name": r["actor_name"] or "Игрок", "actor_avatar": r["actor_avatar"], "clip_id": r["clip_id"],
+                      "clip": clip})
+    return {"unread": unread, "items": items}
+
+
+@app.post("/api/notifications/read")
+def notifications_read(request: Request):
+    steam_id = require_login(request)
+    with closing(db()) as con, con:
+        con.execute("UPDATE notifications SET read = 1 WHERE steam_id = ?", (steam_id,))
+    return {"ok": True}
+
+
+# ---------------- Telegram: привязка аккаунта и «агенты» канала ----------------
+
+@app.post("/api/telegram/link")
+def telegram_link(request: Request):
+    """Ссылка на бота с одноразовым кодом: человек нажимает «Запустить» — и бот знает, чей это профиль."""
+    steam_id = require_login(request)
+    bot = telegram_bot.bot_username()
+    if not bot:
+        raise HTTPException(503, "Telegram-бот пока не подключён")
+    code = secrets.token_urlsafe(12)
+    with closing(db()) as con, con:
+        con.execute("DELETE FROM tg_codes WHERE steam_id = ? OR expires < ?", (steam_id, int(time.time())))
+        con.execute("INSERT INTO tg_codes (code, steam_id, expires) VALUES (?, ?, ?)", (code, steam_id, int(time.time()) + 900))
+    return {"url": f"https://t.me/{bot}?start={code}"}
+
+
+@app.delete("/api/telegram/link")
+def telegram_unlink(request: Request):
+    steam_id = require_login(request)
+    with closing(db()) as con, con:
+        con.execute("DELETE FROM tg_links WHERE steam_id = ?", (steam_id,))
+    return {"ok": True}
+
+
+def tg_link_code(code: str, chat_id: int) -> str | None:
+    """Бот получил /start <код>: привязываем чат к профилю. Возвращаем имя игрока или None, если код не подошёл."""
+    with closing(db()) as con, con:
+        row = con.execute("SELECT steam_id FROM tg_codes WHERE code = ? AND expires > ?", (code, int(time.time()))).fetchone()
+        if not row:
+            return None
+        con.execute("DELETE FROM tg_codes WHERE code = ?", (code,))
+        con.execute("DELETE FROM tg_links WHERE chat_id = ?", (chat_id,))
+        con.execute("INSERT OR REPLACE INTO tg_links (steam_id, chat_id, ts) VALUES (?, ?, ?)",
+                    (row["steam_id"], chat_id, int(time.time())))
+        user = con.execute("SELECT name FROM users WHERE steam_id = ?", (row["steam_id"],)).fetchone()
+    return (user["name"] if user and user["name"] else row["steam_id"])
+
+
+def tg_unlink_chat(chat_id: int) -> bool:
+    with closing(db()) as con, con:
+        return con.execute("DELETE FROM tg_links WHERE chat_id = ?", (chat_id,)).rowcount > 0
+
+
+def tg_recent_clips() -> list[dict]:
+    """Для команды /clips: последние опубликованные клипы."""
+    return [{"caption": clip_caption(c), "author": c["author"] or "Игрок",
+             "url": f"{SITE_URL}/u/{c['steam_id']}?clip={c['id']}" if SITE_URL else None}
+            for c in recent_public_clips(5)]
+
+
+def kv_get(key: str) -> str | None:
+    with closing(db()) as con:
+        row = con.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def kv_set(key: str, value: str) -> None:
+    with closing(db()) as con, con:
+        con.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, value))
+
+
+def tg_digest() -> str | None:
+    """Итоги дня для канала: сколько матчей разобрали, лучший матч и новые клипы. None — писать не о чем."""
+    since = int(time.mktime(date.today().timetuple()))
+    best, matches = None, 0
+    for path in MATCHES.glob("*.meta.json"):
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if meta.get("created", 0) < since:
+            continue
+        matches += 1
+        for st in meta.get("stats", []):
+            if st.get("rating") and (best is None or st["rating"] > best[0]["rating"]):
+                best = (st, meta)
+    clips = recent_public_clips(5, since=since)
+    if not matches and not clips:
+        return None
+    e = telegram_bot.esc
+    lines = ["📊 <b>Итоги дня в Nuga CS Demo</b>", ""]
+    if matches:
+        lines.append(f"Разобрано матчей: <b>{matches}</b>")
+    if best:
+        st, meta = best
+        lines.append(f"🏆 Игрок дня: <b>{e(st.get('name', '?'))}</b> — рейтинг {float(st['rating']):.2f}, "
+                     f"{st.get('kills', 0)}/{st.get('deaths', 0)} на {e(str(meta.get('map', '')).replace('de_', '').capitalize())}")
+    if clips:
+        lines += ["", f"🎬 Новые клипы: <b>{len(clips)}</b>"]
+        for c in clips:
+            text = f"{e(clip_caption(c))} — {e(c['author'] or 'Игрок')}"
+            lines.append("• " + (f"<a href=\"{SITE_URL}/u/{c['steam_id']}?clip={c['id']}\">{text}</a>" if SITE_URL else text))
+    return "\n".join(lines)
+
+
+telegram_bot.start({"link": tg_link_code, "unlink": tg_unlink_chat, "clips": tg_recent_clips, "digest": tg_digest,
+                    "kv_get": kv_get, "kv_set": kv_set, "site": SITE_URL})

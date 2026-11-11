@@ -145,8 +145,9 @@
     <nav class="links">
       <a href="#features">Возможности</a>
       <a href="#how">Как это работает</a>
+      <a id="tgTop" href="#" target="_blank" rel="noopener" hidden>✈ Наш Телеграм</a>
     </nav>
-    <div class="right"><a class="btn ghost small" href="/app"><span class="long">Открыть приложение</span><span class="short">Открыть</span></a></div>
+    <div class="right"><span data-lang-slot style="margin-right:10px"></span><a class="btn ghost small" href="/app"><span class="long">Открыть приложение</span><span class="short">Открыть</span></a></div>
   </div>
 </header>
 
@@ -221,8 +222,16 @@
 
   <footer>
     <span>© 2026 Nuga CS Demo · сделано Nuga006</span>
-    <span><a href="/privacy" style="color:inherit">Конфиденциальность</a> · Проект не связан с Valve и FACEIT.</span>
+    <span><a id="tgFoot" href="#" target="_blank" rel="noopener" style="color:#6cc4f5" hidden>✈ Наш Телеграм</a> <a href="/privacy" style="color:inherit">Конфиденциальность</a> · Проект не связан с Valve и FACEIT.</span>
   </footer>
 </main>
+<script src="/static/i18n.js?v=1"></script>
+<script>
+// «Наш Телеграм» появляется, когда канал указан в настройках сервера
+fetch("/api/config").then((r) => r.json()).then((cfg) => {
+  if (!cfg.telegram) return;
+  for (const id of ["tgTop", "tgFoot"]) { const a = document.getElementById(id); a.href = cfg.telegram; a.hidden = false; }
+}).catch(() => {});
+</script>
 </body>
 </html>
