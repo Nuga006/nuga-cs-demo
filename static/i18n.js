@@ -382,7 +382,7 @@
     "Безопасен ли вход через Steam?": "Is signing in with Steam safe?",
     "Пароль вводится только на сайте Steam. Мы получаем лишь ваш Steam ID — по нему находим профиль FACEIT.": "You enter your password only on the Steam website. We receive just your Steam ID and use it to find your FACEIT profile.",
     "Какие данные вы храните?": "What data do you store?",
-    "Steam ID, открытый профиль FACEIT, монеты и разборы матчей. Демки удаляются сразу после разбора, паролей мы не видим. Подробно — на странице": "Steam ID, public FACEIT profile, coins and match analyses. Demos are deleted right after analysis and we never see passwords. Details are on the",
+    "Steam ID, открытый профиль FACEIT, монеты и разборы матчей. Из демок храним только 6 последних (для 3D-клипов), старые удаляются сами. Паролей мы не видим. Подробно — на странице": "Steam ID, public FACEIT profile, coins and match analyses. We keep only the 6 most recent demos (for 3D clips); older ones are deleted automatically. We never see passwords. Details are on the",
     "Почему матч не открывается в CS2?": "Why won't the match open in CS2?",
     "CS2 открывает только демки текущей версии игры. После крупного обновления старые демки могут перестать запускаться.": "CS2 only opens demos of the current game version. After a major update old demos may stop working.",
     "Аккаунт": "Account",

@@ -2,44 +2,17 @@
 # Запуск:  python analyze.py имя_демки.dem
 # Можно сразу давать .dem.zst или .dem.gz с FACEIT — скрипт сам распакует.
 
-import gzip
-import shutil
 import sys
 from pathlib import Path
 
 import pandas as pd
 from demoparser2 import DemoParser
 
+from analyzer import drop_warmup, prepare_demo  # общие функции живут в analyzer.py
+
 # Чтобы таблицы в терминале печатались полностью, без "..."
 pd.set_option("display.width", 200)
 pd.set_option("display.max_columns", 50)
-
-
-def prepare_demo(path: Path) -> Path:
-    """Если файл сжат (.gz или .zst), распаковываем его рядом в .dem и возвращаем новый путь."""
-    if path.suffix not in (".gz", ".zst"):
-        return path
-
-    dem_path = path.with_suffix("")  # match.dem.zst -> match.dem
-    if dem_path.exists():
-        return dem_path
-
-    print(f"Распаковываю {path.name}...")
-    if path.suffix == ".gz":
-        with gzip.open(path, "rb") as src, open(dem_path, "wb") as dst:
-            shutil.copyfileobj(src, dst)
-    else:
-        import zstandard  # библиотека для формата .zst (pip install zstandard)
-        with open(path, "rb") as src, open(dem_path, "wb") as dst:
-            zstandard.ZstdDecompressor().copy_stream(src, dst)
-    return dem_path
-
-
-def drop_warmup(df: pd.DataFrame) -> pd.DataFrame:
-    """Убираем события из разминки (warmup), чтобы они не портили статистику."""
-    if df.empty or "is_warmup_period" not in df.columns:
-        return df
-    return df[~df["is_warmup_period"].fillna(False).astype(bool)]
 
 
 def main():
