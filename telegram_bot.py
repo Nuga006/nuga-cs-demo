@@ -163,6 +163,17 @@ def _digest() -> None:
                     send_message(_state["channel"], text, hooks.get("site") or None, "Открыть Nuga CS Demo")
         except Exception as e:                               # агент не должен останавливаться из-за одной ошибки
             print("Telegram: итоги дня не получились —", e)
+        try:
+            # Личный недельный отчёт — по понедельникам в тот же час
+            week = datetime.now().strftime("%G-W%V")
+            if "weekly" in hooks and datetime.now().weekday() == 0 and datetime.now().hour >= hour \
+                    and hooks["kv_get"]("tg_weekly") != week:
+                hooks["kv_set"]("tg_weekly", week)
+                site = hooks.get("site")
+                for chat, text in hooks["weekly"]():
+                    send_message(chat, text, f"{site}/app/stats" if site else None, "Моя статистика")
+        except Exception as e:
+            print("Telegram: недельный отчёт не получился —", e)
         time.sleep(600)
 
 

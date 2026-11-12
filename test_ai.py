@@ -5,7 +5,9 @@ import gzip
 import json
 import os
 import shutil
+import sqlite3
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -53,13 +55,22 @@ class AIReview(unittest.TestCase):
         for mid, kills in (("aaaaaaaaaaaa", 20), ("bbbbbbbbbbbb", 10)):
             with gzip.open(self.tmp / f"{mid}.json.gz", "wt", encoding="utf-8") as f:
                 json.dump(match(mid, kills), f)
-            metas.append({"id": mid, "map": "de_mirage", "created": 1_700_000_000,
-                          "stats": [{"kills": kills, "deaths": 15, "rating": 1.0, "hs": 50, "fk": 2, "fd": 1}]})
+            metas.append({"id": mid, "map": "de_mirage", "created": time.time() - 3600, "score": [13, 5],
+                          "v": app.META_VERSION,
+                          "stats": [{"sid": ME, "name": "Nuga", "team": 0, "kills": kills, "deaths": 15, "rating": 1.6,
+                                     "hs": 50, "fk": 2, "fd": 1, "aces": 1, "fa": 4}]})
             (self.tmp / f"{mid}.meta.json").write_text(json.dumps(metas[-1]), encoding="utf-8")
         FakeClient.calls = []
         self.coins = {"value": 5}
         self.charged = []
+        con = sqlite3.connect(self.tmp / "test.db")      # своя база: настоящую не трогаем
+        con.execute("CREATE TABLE achievements (steam_id TEXT, code TEXT, ts INTEGER, PRIMARY KEY (steam_id, code))")
+        con.execute("CREATE TABLE tg_links (steam_id TEXT, chat_id INTEGER, ts INTEGER)")
+        con.execute("INSERT INTO tg_links VALUES (?, 42, 0)", (ME,))
+        con.commit()
+        con.close()
         self.patches = [
+            mock.patch.object(app, "DB_PATH", self.tmp / "test.db"),
             mock.patch.object(app, "MATCHES", self.tmp),
             mock.patch.object(app, "list_matches", lambda req: metas),
             mock.patch.object(app, "get_user", lambda sid: {"coins": self.coins["value"]}),
@@ -117,11 +128,34 @@ class AIReview(unittest.TestCase):
 
     def test_heat_and_averages(self):
         heat = app.my_heat(request(ME), map="de_mirage")
-        self.assertEqual(heat, {"kills": [[10, 20]] * 2, "deaths": [[70, 80]] * 2, "matches": 2})   # по точке из каждого матча
+        self.assertEqual(heat, {"kills": [[10, 20]] * 2, "deaths": [[70, 80]] * 2, "nades": [], "matches": 2})   # по точке из каждого матча
         avg = app.site_averages()
         self.assertAlmostEqual(avg["kd"], 30 / 30)
         self.assertAlmostEqual(avg["opening"], 4 / 6 * 100)
         self.assertEqual(avg["players"], 2)
+
+    def test_leaderboard(self):
+        top = app.leaderboard()
+        self.assertEqual(top["rating"], [{"name": "Nuga", "sid": ME, "value": 1.6, "n": 2}])
+        self.assertEqual(top["aces"][0]["value"], 2)
+        self.assertEqual(top["clutches"], [])
+
+    def test_achievements_claim_once(self):
+        got = {a["code"]: a for a in app.achievements(request(ME))}
+        self.assertEqual(got["first"]["progress"], 1)
+        self.assertEqual((got["ten"]["progress"], got["ten"]["goal"]), (2, 10))
+        self.assertEqual(got["rating"]["progress"], 1)          # оба матча с рейтингом 1.6
+        app.claim_achievement("ace", request(ME))
+        self.assertEqual(self.charged, [(ME, 10)])
+        self.assertEqual(self.status(app.claim_achievement, "ace", request(ME)), 409)   # второй раз — нет
+        self.assertEqual(self.status(app.claim_achievement, "ten", request(ME)), 400)   # ещё не открыта
+        self.assertEqual(self.status(app.claim_achievement, "nope", request(ME)), 404)
+
+    def test_weekly_report(self):
+        [(chat, text)] = app.tg_weekly()
+        self.assertEqual(chat, 42)
+        self.assertIn("Матчей: <b>2</b>, побед: <b>2</b>", text)
+        self.assertIn("Средний рейтинг: <b>1.60</b>", text)
 
 
 if __name__ == "__main__":

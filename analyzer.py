@@ -190,6 +190,8 @@ def build_replay(parser: DemoParser, rounds: list[dict], player_ids: list[str],
 
     bomb = bomb_events(parser)
     grenades = grenade_events(parser)
+    for g in grenades:
+        g["p"] = index.get(g.pop("sid"))           # номер бросившего игрока (None — зритель/бот вне списка)
     shots = shot_events(parser)
 
     replay_rounds = []
@@ -363,6 +365,7 @@ def grenade_events(parser: DemoParser) -> list[dict]:
                 "end": min(later) if later else t0 + default_len,
                 "x": round(float(x)),
                 "y": round(float(y)),
+                "sid": str(row.get("user_steamid")),      # кто бросил; в build_replay станет номером игрока "p"
             })
 
     # Флешки и HE — показываем вспышку на полсекунды
@@ -373,7 +376,7 @@ def grenade_events(parser: DemoParser) -> list[dict]:
                 continue
             t0 = int(row["tick"])
             result.append({"type": kind, "start": t0, "end": t0 + 32,
-                           "x": round(float(x)), "y": round(float(y))})
+                           "x": round(float(x)), "y": round(float(y)), "sid": str(row.get("user_steamid"))})
     return result
 
 
@@ -629,6 +632,55 @@ def kill_events(rounds: list[dict], deaths: pd.DataFrame, player_ids: list[str])
     return events
 
 
+PISTOL_ROUNDS = (0, 12)          # FACEIT играет MR12: пистолетки — 1-й и 13-й раунды (овертайм не считаем)
+
+
+def buy_type(round_index: int, equip: int) -> str:
+    """Тип закупа игрока по стоимости его снаряжения на старте раунда."""
+    if round_index in PISTOL_ROUNDS:
+        return "pistol"
+    return "eco" if equip < 2000 else "force" if equip < 4000 else "full"
+
+
+def round_stats(data: dict) -> dict[int, dict]:
+    """Статистика по раундам для каждого игрока — считается по уже готовому разбору, поэтому работает и для старых матчей:
+    dt   — когда умирал: [0–20 с, 20–60 с, позже] от начала раунда (конца закупки);
+    side — по сторонам T/CT: раундов r, убийств k, смертей d, выигранных раундов w, первых убийств fk / смертей fd;
+    buy  — по типу закупа (pistol/eco/force/full): r, k, d, w."""
+    blank = lambda: {"r": 0, "k": 0, "d": 0, "w": 0, "fk": 0, "fd": 0}
+    out = {i: {"dt": [0, 0, 0], "side": {"T": blank(), "CT": blank()},
+               "buy": {b: blank() for b in ("pistol", "eco", "force", "full")}}
+           for i in range(len(data.get("players", [])))}
+    events: dict[int, list] = {}
+    for e in data.get("kill_events", []):
+        events.setdefault(e[0], []).append(e)
+
+    for ri, r in enumerate(data.get("replay", {}).get("rounds", [])):
+        if not r.get("frames"):
+            continue
+        evs = sorted(events.get(ri, []), key=lambda e: e[1])
+        first_kill = next((e for e in evs if e[2] is not None), None)
+        for i, f in enumerate(r["frames"][0]):
+            if not f or i not in out or f[3] not in (2, 3):
+                continue
+            side = "T" if f[3] == 2 else "CT"
+            k = sum(e[2] == i for e in evs)
+            d = sum(e[3] == i for e in evs)
+            for b in (out[i]["side"][side], out[i]["buy"][buy_type(ri, num(f[11]) if len(f) > 11 else 0)]):
+                b["r"] += 1
+                b["k"] += k
+                b["d"] += d
+                b["w"] += r["winner"] == side
+            if first_kill:
+                out[i]["side"][side]["fk"] += first_kill[2] == i
+                out[i]["side"][side]["fd"] += first_kill[3] == i
+            for e in evs:
+                if e[3] == i:
+                    secs = (e[1] - r["start"]) / 64
+                    out[i]["dt"][0 if secs < 20 else 1 if secs < 60 else 2] += 1
+    return out
+
+
 def analyze_demo(demo_path: Path) -> dict:
     """Разбирает демку и возвращает словарь, который сервер отдаст сайту в виде JSON."""
     parser = DemoParser(str(demo_path))
@@ -723,7 +775,7 @@ def analyze_demo(demo_path: Path) -> dict:
     for i, row in enumerate(player_rows):
         row["clutch"] = replay.get("clutch_stats", {}).get(i, {})
 
-    return {
+    result = {
         "map": header.get("map_name", "?"),
         "rounds": len(rounds),
         "players": player_rows,
@@ -731,3 +783,6 @@ def analyze_demo(demo_path: Path) -> dict:
         "replay": replay,
         "kill_events": kill_events(rounds, deaths, [p["steamid"] for p in player_rows]),
     }
+    for i, extra in round_stats(result).items():
+        player_rows[i].update(extra)
+    return result

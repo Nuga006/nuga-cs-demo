@@ -30,7 +30,7 @@ from fastapi.staticfiles import StaticFiles
 
 import clips3d
 import telegram_bot
-from analyzer import analyze_demo, prepare_demo
+from analyzer import analyze_demo, prepare_demo, round_stats
 
 BASE = Path(__file__).parent
 UPLOADS = BASE / "uploads"          # временная папка для загруженных демок
@@ -160,6 +160,12 @@ with closing(db()) as _con, _con:
         CREATE TABLE IF NOT EXISTS kv (
             key   TEXT PRIMARY KEY,
             value TEXT
+        );
+        CREATE TABLE IF NOT EXISTS achievements (
+            steam_id TEXT NOT NULL,
+            code     TEXT NOT NULL,
+            ts       INTEGER NOT NULL,
+            PRIMARY KEY (steam_id, code)
         );
     """)
     if "avatar" not in {r["name"] for r in _con.execute("PRAGMA table_info(users)")}:
@@ -294,6 +300,10 @@ async def protect(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    # Без этого браузер сам решает, что страница «ещё свежая», и после обновления сайта показывает старую.
+    # no-cache = каждый раз сверяться с сервером (ответ 304 без тела, если файл не менялся). Радары карт не меняются — их не трогаем.
+    if not path.startswith("/static/maps/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
     return response
 
 
@@ -342,8 +352,20 @@ def to_plain(o):
     return o.item() if hasattr(o, "item") else str(o)
 
 
+def add_round_stats(data: dict) -> bool:
+    """Старые разборы без статистики по раундам (тайминги смертей, стороны, закуп): досчитываем по готовому разбору.
+    True — что-то добавили."""
+    players = data.get("players", [])
+    if not players or all("dt" in p for p in players):
+        return False
+    for i, extra in round_stats(data).items():
+        players[i].update(extra)
+    return True
+
+
 def match_summary(mid: str, data: dict) -> dict:
     """Короткая карточка матча для списка на главной."""
+    add_round_stats(data)
     players = data.get("players", [])
     teams = sorted({p["team"] for p in players})
     score = [0, 0]
@@ -372,7 +394,7 @@ def match_summary(mid: str, data: dict) -> dict:
         # Статистика каждого игрока — для раздела «Моя статистика» по всем матчам
         "stats": [
             {k: p.get(k) for k in STAT_FIELDS}
-            | {"team": teams.index(p["team"]) if p["team"] in teams else -1}
+            | {"sid": p.get("steamid"), "team": teams.index(p["team"]) if p["team"] in teams else -1}
             | highlight_counts(data, i)
             for i, p in enumerate(players)
         ],
@@ -385,10 +407,10 @@ def match_summary(mid: str, data: dict) -> dict:
 STAT_FIELDS = ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "rating", "fk", "fd", "ud",
                "rounds", "k2", "k3", "k4", "k5", "trades", "traded", "shots", "hits",
                "noscope", "smoke", "wall", "blind", "plants", "defuses", "mvps", "clutch",
-               "ns", "nf", "nh", "nm", "ef", "tf", "eft", "fa")
+               "ns", "nf", "nh", "nm", "ef", "tf", "eft", "fa", "dt", "side", "buy")
 
-ANALYZER_VERSION = 8   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
-META_VERSION = 5     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
+ANALYZER_VERSION = 9   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
+META_VERSION = 6     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
 
 
 def highlight_counts(data: dict, i: int) -> dict:
@@ -439,7 +461,14 @@ def link_faceit(mid: str, faceit_id: str | None) -> None:
 
 
 def saved_match_response(mid: str) -> Response:
-    """Отдаём сохранённый разбор как есть, в сжатом виде — браузер сам распакует."""
+    """Отдаём сохранённый разбор как есть, в сжатом виде — браузер сам распакует.
+    Старый разбор без статистики по раундам один раз досчитываем и пересохраняем."""
+    path = MATCHES / f"{mid}.json.gz"
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        data = json.load(f)
+    if add_round_stats(data):
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, separators=(",", ":"), default=to_plain)
     return Response(content=(MATCHES / f"{mid}.json.gz").read_bytes(), media_type="application/json",
                     headers={"Content-Encoding": "gzip"})
 
@@ -665,7 +694,7 @@ def ai_form(request: Request, body: dict = Body(default={})):
 def my_heat(request: Request, map: str = Query(..., max_length=40)):
     """Хитмап по всем моим матчам на карте: точки моих убийств и смертей (формат kill_events, см. analyzer.py)."""
     steam_id = require_login(request)
-    kills, deaths, n = [], [], 0
+    kills, deaths, nades, n = [], [], [], 0
     for meta in list_matches(request):
         if meta.get("map") != map:
             continue
@@ -682,7 +711,10 @@ def my_heat(request: Request, map: str = Query(..., max_length=40)):
                 kills.append([e[4], e[5]])
             if e[3] == idx and e[6] is not None:
                 deaths.append([e[6], e[7]])
-    return {"kills": kills, "deaths": deaths, "matches": n}
+        for r in data.get("replay", {}).get("rounds", []):
+            nades += [[g["x"], g["y"], g["type"]] for g in r.get("grenades", [])     # граната, брошенная в этом раунде
+                      if g.get("p") == idx and r["start"] <= g["start"] <= r["end"]]
+    return {"kills": kills, "deaths": deaths, "nades": nades, "matches": n}
 
 
 AVG_CACHE: dict = {"ts": 0, "data": {}}
@@ -694,12 +726,7 @@ def site_averages():
     Ключи совпадают с карточками на странице. Пересчитываем не чаще раза в 10 минут."""
     if time.time() - AVG_CACHE["ts"] < 600:
         return AVG_CACHE["data"]
-    rows = []
-    for path in MATCHES.glob("*.meta.json"):
-        try:
-            rows += json.loads(path.read_text(encoding="utf-8")).get("stats", [])
-        except (OSError, ValueError):
-            continue
+    rows = [st for m in all_metas() for st in m.get("stats", [])]
     total = lambda k: sum(r.get(k) or 0 for r in rows)
     mean = lambda k: (lambda v: sum(v) / len(v) if v else None)([r[k] for r in rows if r.get(k) is not None])
     kills, deaths = total("kills"), total("deaths")
@@ -712,6 +739,117 @@ def site_averages():
     }
     AVG_CACHE.update(ts=time.time(), data=data)
     return data
+
+
+# ---------- Таблица лидеров недели ----------
+LEADER_MIN_MATCHES = 2     # для среднего рейтинга — минимум матчей за неделю, чтобы один удачный матч не решал всё
+
+
+@app.get("/api/leaderboard")
+def leaderboard():
+    """Топ-10 игроков сайта за последние 7 дней: средний рейтинг, эйсы, клатчи, флеш-ассисты."""
+    since = time.time() - 7 * 86400
+    people: dict[str, dict] = {}
+    for m in all_metas():
+        if m.get("created", 0) < since:
+            continue
+        for st in m.get("stats", []):
+            key = st.get("sid") or st.get("name")
+            p = people.setdefault(key, {"name": st.get("name"), "sid": st.get("sid"), "n": 0, "rating": 0.0,
+                                        "aces": 0, "clutches": 0, "fa": 0})
+            p["n"] += 1
+            p["rating"] += st.get("rating") or 0
+            for k in ("aces", "clutches", "fa"):
+                p[k] += st.get(k) or 0
+    for p in people.values():
+        p["rating"] = round(p["rating"] / p["n"], 2)
+    top = lambda key, pool: [{"name": p["name"], "sid": p["sid"], "value": p[key], "n": p["n"]}
+                             for p in sorted(pool, key=lambda p: p[key], reverse=True) if p[key]][:10]
+    pool = list(people.values())
+    return {"rating": top("rating", [p for p in pool if p["n"] >= LEADER_MIN_MATCHES]),
+            "aces": top("aces", pool), "clutches": top("clutches", pool), "fa": top("fa", pool),
+            "min_matches": LEADER_MIN_MATCHES}
+
+
+# ---------- Ачивки: открываются по статистике, за каждую — монеты ----------
+# (код, название, описание, цель, награда, как считать прогресс по моим строкам статистики)
+ACHIEVEMENTS = [
+    ("first", "Первый разбор", "Разберите свой первый матч", 1, 2, lambda rows: len(rows)),
+    ("ten", "Десятка", "10 разобранных матчей", 10, 5, lambda rows: len(rows)),
+    ("k4", "Четыре из пяти", "Сделайте 4K", 1, 3, lambda rows: sum(st.get("k4") or 0 for st in rows)),
+    ("ace", "Эйс", "Убейте всю команду соперника в одном раунде", 1, 10, lambda rows: sum(st.get("aces") or 0 for st in rows)),
+    ("clutch", "Клатчер", "Выиграйте 3 клатча", 3, 5, lambda rows: sum(st.get("clutches") or 0 for st in rows)),
+    ("flash", "Ослепитель", "10 флеш-ассистов", 10, 5, lambda rows: sum(st.get("fa") or 0 for st in rows)),
+    ("blind", "Солнце в глаза", "Ослепите 50 врагов", 50, 3, lambda rows: sum(st.get("ef") or 0 for st in rows)),
+    ("rating", "Звезда матча", "Сыграйте матч с рейтингом 1.50 и выше", 1, 5,
+     lambda rows: sum((st.get("rating") or 0) >= 1.5 for st in rows)),
+    ("opener", "Открывашка", "5 первых убийств в одном матче", 1, 3, lambda rows: sum((st.get("fk") or 0) >= 5 for st in rows)),
+]
+
+
+def achievements_for(steam_id: str) -> list[dict]:
+    rows = [st for _, st in my_rows(steam_id)]
+    with closing(db()) as con:
+        claimed = {r["code"] for r in con.execute("SELECT code FROM achievements WHERE steam_id = ?", (steam_id,))}
+    return [{"code": code, "title": title, "desc": desc, "goal": goal, "reward": reward,
+             "progress": min(int(count(rows)), goal), "claimed": code in claimed}
+            for code, title, desc, goal, reward, count in ACHIEVEMENTS]
+
+
+@app.get("/api/achievements")
+def achievements(request: Request):
+    return achievements_for(require_login(request))
+
+
+@app.post("/api/achievements/{code}/claim")
+def claim_achievement(code: str, request: Request):
+    """Забрать награду за открытую ачивку — один раз."""
+    steam_id = require_login(request)
+    a = next((a for a in achievements_for(steam_id) if a["code"] == code), None)
+    if a is None:
+        raise HTTPException(404, "Нет такой ачивки")
+    if a["progress"] < a["goal"]:
+        raise HTTPException(400, "Ачивка ещё не открыта")
+    with closing(db()) as con, con:
+        if con.execute("INSERT OR IGNORE INTO achievements (steam_id, code, ts) VALUES (?, ?, ?)",
+                       (steam_id, code, int(time.time()))).rowcount != 1:
+            raise HTTPException(409, "Награда уже получена")
+    change_coins(steam_id, a["reward"], f"Ачивка «{a['title']}»")
+    return {"coins": get_user(steam_id)["coins"], "achievements": achievements_for(steam_id)}
+
+
+# ---------- Недельный отчёт в Telegram ----------
+
+def tg_weekly() -> list[tuple[int, str]]:
+    """По понедельникам: каждому, кто привязал Telegram, — его неделя: матчи, победы, рейтинг и лучший матч.
+    Возвращает [(chat_id, текст)]; кто не играл на неделе — тому не пишем."""
+    week = 7 * 86400
+    now = time.time()
+    with closing(db()) as con:
+        links = [(r["steam_id"], r["chat_id"]) for r in con.execute("SELECT steam_id, chat_id FROM tg_links")]
+    esc = telegram_bot.esc
+    out = []
+    for steam_id, chat in links:
+        rows = my_rows(steam_id, now - 2 * week)
+        this = [(m, st) for m, st in rows if m.get("created", 0) >= now - week]
+        prev = [st for m, st in rows if m.get("created", 0) < now - week]
+        if not this:
+            continue
+        avg = lambda sts: sum(st.get("rating") or 0 for st in sts) / len(sts)
+        rating = avg([st for _, st in this])
+        trend = ""
+        if prev:
+            diff = rating - avg(prev)
+            trend = f" ({'▲' if diff >= 0 else '▼'} {abs(diff):.2f} к прошлой неделе)"
+        wins = sum(won(m, st) for m, st in this)
+        best_m, best = max(this, key=lambda r: r[1].get("rating") or 0)
+        out.append((chat,
+                    f"📅 <b>Ваша неделя в CS2</b>\n\n"
+                    f"Матчей: <b>{len(this)}</b>, побед: <b>{wins}</b>\n"
+                    f"Средний рейтинг: <b>{rating:.2f}</b>{trend}\n"
+                    f"Лучший матч: {esc(str(best_m.get('map', '')).replace('de_', '').title())}, "
+                    f"рейтинг <b>{best.get('rating') or 0:.2f}</b>, {best.get('kills', 0)}–{best.get('deaths', 0)}"))
+    return out
 
 
 def ai_tip_telegram(mid: str, steam_id: str) -> None:
@@ -759,18 +897,35 @@ def list_matches(request: Request):
         mine = {r["match_id"] for r in con.execute("SELECT match_id FROM user_matches WHERE steam_id = ?", (steam_id,))}
     nick = (user.get("faceit") or "").lower()
 
+    metas = [m for m in all_metas()
+             if m["id"] in mine or any(st.get("sid") == steam_id or (nick and str(st.get("name", "")).lower() == nick)
+                                       for st in m.get("stats", []))]
+    return sorted(metas, key=lambda m: m.get("created", 0), reverse=True)[:200]
+
+
+def all_metas() -> list[dict]:
+    """Карточки всех матчей сайта; устаревшие пересобираются из полного разбора."""
     metas = []
     for path in MATCHES.glob("*.meta.json"):
         try:
             meta = json.loads(path.read_text(encoding="utf-8"))
-            if meta.get("v", 1) < META_VERSION:
-                meta = upgrade_meta(meta)
-            played = bool(nick) and any(str(p.get("name", "")).lower() == nick for p in meta.get("stats", []))
-            if meta["id"] in mine or played:
-                metas.append(meta)
-        except (OSError, ValueError):
+            metas.append(upgrade_meta(meta) if meta.get("v", 1) < META_VERSION else meta)
+        except (OSError, ValueError, KeyError):
             continue
-    return sorted(metas, key=lambda m: m.get("created", 0), reverse=True)[:200]
+    return metas
+
+
+def my_rows(steam_id: str, since: float = 0) -> list[tuple[dict, dict]]:
+    """Мои строки статистики по всем матчам сайта (по Steam ID): [(карточка матча, моя строка)], новые сверху."""
+    rows = [(m, st) for m in all_metas() if m.get("created", 0) >= since
+            for st in m.get("stats", []) if st.get("sid") == steam_id]
+    return sorted(rows, key=lambda r: r[0].get("created", 0), reverse=True)
+
+
+def won(meta: dict, st: dict) -> bool:
+    """Выиграла ли команда игрока (score в карточке — [команда 0, команда 1])."""
+    score = meta.get("score") or [0, 0]
+    return st.get("team") in (0, 1) and score[st["team"]] > score[1 - st["team"]]
 
 
 def has_free_reanalysis(steam_id: str, mid: str) -> bool:
@@ -1867,4 +2022,5 @@ def tg_digest() -> str | None:
 
 
 telegram_bot.start({"link": tg_link_code, "unlink": tg_unlink_chat, "clips": tg_recent_clips, "digest": tg_digest,
+                    "weekly": tg_weekly,
                     "kv_get": kv_get, "kv_set": kv_set, "site": SITE_URL})

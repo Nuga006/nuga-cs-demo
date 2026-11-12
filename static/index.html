@@ -180,6 +180,15 @@
   .pbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
   .pbox h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
   .aitext { white-space: pre-wrap; line-height: 1.55; }
+  .rrow { display: grid; grid-template-columns: 1.3fr repeat(4, 1fr); gap: 6px; font-size: 13px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .rrow span:not(:first-child) { text-align: right; font-weight: 600; }
+  .rrow.rh { border-top: 0; color: var(--muted); font-size: 11px; }
+  .rrow.rh span { font-weight: 400; }
+  .ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .ach .pbox { margin: 0; }
+  .ach .done { border-color: var(--accent); }
+  .lbgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .lbgrid .pbox { margin: 0; }
   .pchips { display: flex; gap: 8px; flex-wrap: wrap; }
   .pchips .chip { padding: 4px 10px; font-size: 13px; }
   .wrow { display: grid; grid-template-columns: 110px 1fr 34px 48px; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; }
@@ -813,6 +822,11 @@
       <div class="phead"><div><h1>Рекорды</h1>
         <div class="psub">Личные рекорды по всем разобранным матчам. Нажмите на карточку, чтобы открыть матч.</div>
         <div class="psub" id="recSub"></div></div></div>
+      <h2 class="first">Лидеры недели</h2>
+      <div id="leaders"></div>
+      <h2>Ачивки</h2>
+      <div class="ach" id="achs"></div>
+      <h2>Личные рекорды</h2>
       <div class="recs" id="recs"></div>
     </section>
 
@@ -976,8 +990,9 @@
         <div class="seg" id="hMode">
           <button data-m="kills" class="on">Где убивал</button>
           <button data-m="deaths">Где умирал</button>
+          <button data-m="nades">Гранаты</button>
         </div>
-        <div class="seg" id="hScope" hidden>
+        <div class="seg" id="hScope" style="display:none">
           <button data-s="match" class="on">Этот матч</button>
           <button data-s="all">Все мои матчи на карте</button>
         </div>
@@ -1287,7 +1302,9 @@ async function loadMyFaceit() {
   renderMatchesPage();
 }
 
-const myStat = (m, nick) => (m.stats || []).find((q) => String(q.name).toLowerCase() === String(nick || "").toLowerCase()) || null;
+// Моя строка в карточке матча: сначала по Steam ID (есть в новых карточках), иначе по нику
+const myStat = (m, nick) => (m.stats || []).find((q) => USER?.steam_id && q.sid === USER.steam_id) ||
+  (m.stats || []).find((q) => String(q.name).toLowerCase() === String(nick || "").toLowerCase()) || null;
 
 function buildRows() {
   const nick = USER?.faceit?.nickname || ME;
@@ -1522,8 +1539,60 @@ function myGames() {
   return games;
 }
 
+// Лидеры недели — по всем игрокам сайта, видны и без входа
+async function loadLeaders() {
+  const box = $("leaders");
+  try {
+    const top = await (await fetch("/api/leaderboard")).json();
+    const LISTS = [["rating", "Средний Rating", (v) => v.toFixed(2)], ["aces", "Эйсы", (v) => v],
+      ["clutches", "Клатчи", (v) => v], ["fa", "Флеш-ассисты", (v) => v]];
+    box.innerHTML = `<div class="lbgrid">` + LISTS.map(([k, title, fmt]) => `<div class="pbox"><h3>${title}</h3>` +
+      (top[k]?.length
+        ? top[k].map((p, i) => `<div class="drow${USER && p.sid === USER.steam_id ? " acc" : ""}"><span>${i + 1}. ${esc(p.name)}</span><b>${fmt(p.value)}</b></div>`).join("")
+        : `<div class="note" style="margin:0">Пока никого</div>`) + `</div>`).join("") + `</div>` +
+      `<div class="note">За последние 7 дней по всем разобранным матчам сайта. В рейтинге — игроки, сыгравшие хотя бы ${top.min_matches} матча.</div>`;
+  } catch { box.innerHTML = `<div class="note">Не удалось загрузить лидеров</div>`; }
+}
+
+// Ачивки: прогресс по моей статистике, за открытую — монеты
+async function loadAchievements() {
+  const box = $("achs");
+  if (!USER) { box.innerHTML = `<div class="note">Войдите через Steam, чтобы получать ачивки и монеты за них.</div>`; return; }
+  try {
+    const res = await fetch("/api/achievements");
+    if (!res.ok) throw new Error();
+    renderAchievements(await res.json());
+  } catch { box.innerHTML = `<div class="note">Не удалось загрузить ачивки</div>`; }
+}
+
+function renderAchievements(list) {
+  const box = $("achs");
+  box.innerHTML = list.map((a) => {
+    const open = a.progress >= a.goal;
+    return `<div class="pbox${open ? " done" : ""}"><h3>${open ? "🏅" : "🔒"} ${esc(a.title)}</h3>` +
+      `<div class="note" style="margin:0 0 8px">${esc(a.desc)}</div>` +
+      `<div class="wrow"><span>${a.progress} / ${a.goal}</span><span class="wb"><i style="width:${(a.progress / a.goal) * 100}%"></i></span>` +
+      `<span>+${a.reward} <span class="coin"></span></span></div>` +
+      (a.claimed ? `<div class="note" style="margin:6px 0 0">Награда получена</div>`
+        : open ? `<button class="chip btn" data-claim="${esc(a.code)}" style="margin-top:6px">Забрать +${a.reward} <span class="coin"></span></button>` : "") +
+      `</div>`;
+  }).join("");
+  box.querySelectorAll("[data-claim]").forEach((b) => b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      const res = await fetch(`/api/achievements/${encodeURIComponent(b.dataset.claim)}/claim`, { method: "POST" });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.detail || `Ошибка сервера (${res.status})`);
+      refreshCoins();
+      renderAchievements(out.achievements);
+    } catch (err) { b.disabled = false; toast(esc(err.message), true); }
+  }));
+}
+
 function renderRecords() {
   const box = $("recs");
+  loadLeaders();
+  loadAchievements();
   if (!USER) { box.innerHTML = `<div class="note">Войдите через Steam, чтобы увидеть свои рекорды.</div>`; $("recSub").textContent = ""; return; }
   const games = myGames();
   $("recSub").textContent = games.length ? `По ${games.length} ${games.length === 1 ? "матчу" : "матчам"}` : "";
@@ -1941,7 +2010,7 @@ function renderMyStats(list) {
   html += `<div class="sbar"><div class="seg" id="sPeriod">` +
     [[10, "10 матчей"], [20, "20 матчей"], [0, "Все"]].map(([v, l]) => `<button data-p="${v}" class="${STATS_PERIOD === v ? "on" : ""}">${l}</button>`).join("") +
     `</div><div class="schips">` +
-    [...groups.map(([id, t]) => [id, t]), ["clutches", "Клатчи"], ["trend", "Тренд"]]
+    [...groups.map(([id, t]) => [id, t]), ["clutches", "Клатчи"], ["rounds", "Раунды"], ["stack", "Стак"], ["trend", "Тренд"]]
       .map(([id, t]) => `<button data-go="st-${id}">${t}</button>`).join("") + `</div></div>`;
 
   // ---------- AI-разбор формы по последним матчам ----------
@@ -1973,6 +2042,34 @@ function renderMyStats(list) {
       `<div class="cb"><i style="width:${p}%;background:${col}"></i></div></div>`;
   }).join("") + `</div>` +
     (clutchGames.length < n ? `<div class="note">Попытки клатчей считаются в ${clutchGames.length} из ${n} матчей — старые разборы их не содержат.</div>` : "");
+
+  // ---------- Стороны, закуп и тайминги — сумма по матчам ----------
+  const rs = sumRounds(games.map((g) => g.st));
+  if (rs) html += `<h2 id="st-rounds">Раунды</h2><div class="ach">${roundsBox(rs)}</div>`;
+
+  // ---------- Стак: с кем вы играете и с кем чаще выигрываете ----------
+  const mates = {}, stacks = {};
+  for (const g of games) {
+    const team = (g.m.stats || []).filter((x) => x.team === g.st.team && x !== g.st).map((x) => x.name);
+    for (const nm of team) {
+      const t = (mates[nm] = mates[nm] || { n: 0, w: 0, r: 0 });
+      t.n++; t.w += g.a > g.b; t.r += Number(g.st.rating) || 0;
+    }
+    if (team.length === 4) {
+      const key = team.slice().sort().join(", ");
+      const s = (stacks[key] = stacks[key] || { n: 0, w: 0 });
+      s.n++; s.w += g.a > g.b;
+    }
+  }
+  const mateRows = Object.entries(mates).filter(([, t]) => t.n >= 2).sort((a, b) => b[1].n - a[1].n).slice(0, 10);
+  const bestStack = Object.entries(stacks).filter(([, s]) => s.n >= 2).sort((a, b) => b[1].w / b[1].n - a[1].w / a[1].n || b[1].n - a[1].n)[0];
+  html += `<h2 id="st-stack">Стак</h2>` + (mateRows.length
+    ? `<div class="pbox"><div class="rrow rh"><span>Тиммейт</span><span>Матчей</span><span>Победы</span><span>Ваш Rating</span><span></span></div>` +
+      mateRows.map(([nm, t]) => `<div class="rrow"><span>${esc(nm)}</span><span>${t.n}</span>` +
+        `<span class="${t.w / t.n >= 0.5 ? "good" : "bad"}">${Math.round((t.w / t.n) * 100)}%</span><span>${(t.r / t.n).toFixed(2)}</span><span></span></div>`).join("") +
+      (bestStack ? `<div class="note" style="margin:8px 0 0">Лучшая пятёрка: вы, ${esc(bestStack[0])} — ` +
+        `${Math.round((bestStack[1].w / bestStack[1].n) * 100)}% побед за ${bestStack[1].n} матча.</div>` : "") + `</div>`
+    : `<div class="note">Пока нет тиммейтов, с которыми вы сыграли хотя бы 2 разобранных матча.</div>`);
 
   // ---------- Тренд и карты ----------
   const METRICS = [["rating", "Rating"], ["kd", "K / D"], ["adr", "ADR"], ["kast", "KAST"], ["hs", "HS %"]];
@@ -2632,7 +2729,7 @@ function setupPlayer(data) {
     data.players.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
   H.player = myIndex(data);           // если я в матче — сразу показываем мой разбор
   $("pSel").value = String(H.player);
-  $("hScope").hidden = !USER;
+  $("hScope").style.display = USER ? "" : "none";   // не hidden: у .seg свой display, он перебивает атрибут
   heatScopeMatch();
   drawHeat();
   renderPlayerInfo();
@@ -2707,12 +2804,44 @@ function heatPoints() {
   return pts;
 }
 
+// Куда игрок бросал гранаты: [x, y, тип]. В старых разборах бросивший не записан — тогда null
+const NADE_COLORS = { smoke: "#d8dde6", flash: "#ffe066", he: "#ff6b4a", molotov: "#ff9f1c" };
+function nadePoints() {
+  if (H.all) return H.all.nades || [];
+  const rounds = R.data.replay?.rounds || [];
+  if (!rounds.some((r) => (r.grenades || []).some((g) => "p" in g))) return null;
+  const pts = [];
+  for (const r of rounds) for (const g of r.grenades || []) {
+    if (g.start < r.start || g.start > r.end) continue;           // граната из прошлого раунда
+    if (H.player >= 0 && g.p !== H.player) continue;
+    pts.push([g.x, g.y, g.type]);
+  }
+  return pts;
+}
+
+function drawNades() {
+  const W = heat.width, pts = nadePoints();
+  if (pts === null) { $("heatNote").textContent = "В этом разборе не записано, кто бросал гранаты — загрузите демку снова (бесплатно)."; return; }
+  for (const [x, y, t] of pts) {
+    const [cx, cy] = toCanvas(x, y);
+    hctx.fillStyle = NADE_COLORS[t] || "#fff"; hctx.globalAlpha = 0.85;
+    hctx.beginPath(); hctx.arc(cx, cy, 9, 0, Math.PI * 2); hctx.fill();
+    hctx.globalAlpha = 1; hctx.strokeStyle = "#0b0d11"; hctx.lineWidth = 2; hctx.stroke();
+  }
+  const count = (t) => pts.filter((p) => p[2] === t).length;
+  const who = H.all ? `Вы, матчей: ${H.all.matches ?? 0}` : H.player >= 0 ? R.data.players[H.player].name : "все игроки";
+  $("heatNote").innerHTML = `<span>${esc(who)}</span>: ` + [["smoke", "смоки"], ["flash", "флешки"], ["he", "HE"], ["molotov", "молотовы"]]
+    .map(([t, l]) => `<span style="color:${NADE_COLORS[t]}">●</span> <span>${l}</span> ${count(t)}`).join(" · ");
+}
+
 function drawHeat() {
   if (!R.data) return;
-  const W = heat.width, pts = heatPoints();
+  const W = heat.width;
   hctx.fillStyle = "#0b0d11";
   hctx.fillRect(0, 0, W, W);
   if (R.radar) { hctx.globalAlpha = 0.55; hctx.drawImage(R.radar, 0, 0, W, W); hctx.globalAlpha = 1; }
+  if (H.mode === "nades") return drawNades();
+  const pts = heatPoints();
 
   // 1) Рисуем «пятна» в невидимом слое — где точек больше, там пятна плотнее
   const off = document.createElement("canvas"); off.width = off.height = W;
@@ -2788,6 +2917,7 @@ function renderPlayerInfo() {
     `</div>` +
     weaponsBox(mine, "Оружие") +
     utilityBox(p, data.players.filter((q) => q.team === p.team)) +
+    roundsBox(p) +
     `<div class="pbox"><h3>Дуэли</h3>` +
     duels.map((d) => `<div class="drow"><span>${esc(d.q.name)}</span><b class="${d.cls}">${d.won} : ${d.lost}</b></div>`).join("") +
     `</div>` +
@@ -2818,6 +2948,40 @@ async function askAI(mid, i) {
   } catch (err) {
     btn.disabled = false; note.textContent = err.message === "Failed to fetch" ? "Нет связи с сервером" : err.message;
   }
+}
+
+// Стороны, закуп и когда умирал. s = {dt, side, buy} — одного матча или сумма по многим (sumRounds)
+function roundsBox(s) {
+  if (!s?.dt) return "";
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const kd = (b) => (b.d ? b.k / b.d : b.k).toFixed(2);
+  const sides = ["T", "CT"].map((k) => [k, s.side[k]]).filter(([, b]) => b.r);
+  const BUYS = [["pistol", "Пистолетки"], ["eco", "Эко"], ["force", "Форс"], ["full", "Полный закуп"]];
+  const deaths = s.dt.reduce((a, b) => a + b, 0);
+  const row = (cells, head = false) => `<div class="rrow${head ? " rh" : ""}">${cells.map((c) => `<span>${c}</span>`).join("")}</div>`;
+  return `<div class="pbox"><h3>За какую сторону сильнее</h3>` +
+    row(["", "Раунды", "K / D", "Победы", "Первые дуэли"], true) +
+    sides.map(([k, b]) => row([k, b.r, kd(b), `${pct(b.w, b.r)}%`, `${b.fk}–${b.fd}`])).join("") + `</div>` +
+    `<div class="pbox"><h3>Закуп: сколько пользы</h3>` +
+    row(["", "Раунды", "Убийств за раунд", "Победы"], true) +
+    BUYS.filter(([k]) => s.buy[k]?.r).map(([k, t]) => { const b = s.buy[k]; return row([t, b.r, (b.k / b.r).toFixed(2), `${pct(b.w, b.r)}%`]); }).join("") +
+    `<div class="note" style="margin:6px 0 0">Эко — снаряжение дешевле $2000, форс — до $4000, полный — от $4000.</div></div>` +
+    `<div class="pbox"><h3>Когда умирал в раунде</h3>` +
+    [["Первые 20 секунд", s.dt[0]], ["20–60 секунд", s.dt[1]], ["После минуты", s.dt[2]]].map(([t, v]) =>
+      `<div class="wrow"><span>${t}</span><span class="wb"><i style="width:${pct(v, deaths)}%"></i></span><span>${pct(v, deaths)}%</span></div>`).join("") +
+    `<div class="note" style="margin:6px 0 0">${s.dt[0] > deaths * 0.35 ? "Много ранних смертей — возможно, слишком агрессивные выходы на старте раунда." : "Время от конца закупки. Всего смертей: " + deaths + "."}</div></div>`;
+}
+
+// Сумма {dt, side, buy} по нескольким матчам (для «Моей статистики»)
+function sumRounds(list) {
+  const out = { dt: [0, 0, 0], side: {}, buy: {} };
+  const add = (to, from) => { for (const [k, v] of Object.entries(from)) to[k] = (to[k] || 0) + v; };
+  for (const s of list) {
+    if (!s?.dt) continue;
+    s.dt.forEach((v, i) => (out.dt[i] += v));
+    for (const g of ["side", "buy"]) for (const [k, b] of Object.entries(s[g])) add((out[g][k] = out[g][k] || {}), b);
+  }
+  return out.dt.some((v) => v) || Object.keys(out.side).length ? out : null;
 }
 
 // Гранаты игрока; в скобках — среднее по его команде, чтобы было с чем сравнить

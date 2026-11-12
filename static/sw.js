@@ -1,6 +1,6 @@
 // Nuga CS Demo — сервис-воркер: делает сайт «приложением» и показывает экран «Нет сети».
 // Меняйте номер версии, когда меняются файлы ниже, — старый кэш удалится сам.
-const VERSION = "nuga-v2";
+const VERSION = "nuga-v4";
 const SHELL = ["/app", "/static/offline.html", "/static/coin.png", "/static/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {

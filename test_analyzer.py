@@ -9,7 +9,7 @@ import json
 import unittest
 from pathlib import Path
 
-from analyzer import analyze_demo, drop_warmup, normalize_side
+from analyzer import analyze_demo, drop_warmup, normalize_side, round_stats
 import pandas as pd
 
 BASE = Path(__file__).resolve().parent
@@ -27,6 +27,24 @@ def demo_dir() -> Path | None:
 class Helpers(unittest.TestCase):
     def test_normalize_side(self):
         self.assertEqual([normalize_side(v) for v in (2, "3", "t", "CT", "TERRORIST", 0)], ["T", "CT", "T", "CT", "T", ""])
+
+    def test_round_stats(self):
+        # Игрок 0 за T, игрок 1 за CT. Раунд 0 — пистолетка, раунд 1 — у T эко ($900), у CT полный закуп.
+        frame = lambda eq0, eq1: [[0, 0, 1, 2, 100, "", 0, 0, "", 0, 0, eq0], [0, 0, 1, 3, 100, "", 0, 0, "", 0, 0, eq1]]
+        data = {"players": [{}, {}], "replay": {"rounds": [
+            {"start": 0, "winner": "T", "frames": [frame(800, 800)]},
+            {"start": 1000, "winner": "CT", "frames": [frame(900, 5000)]},
+        ]}, "kill_events": [
+            [0, 640, 0, 1, 0, 0, 0, 0, "glock", False],        # 10 с — T убил CT
+            [1, 1000 + 64 * 30, 1, 0, 0, 0, 0, 0, "m4a1", True],   # 30 с — CT убил T
+        ]}
+        s = round_stats(data)
+        self.assertEqual(s[1]["dt"], [1, 0, 0])
+        self.assertEqual(s[0]["dt"], [0, 1, 0])
+        self.assertEqual(s[0]["side"]["T"], {"r": 2, "k": 1, "d": 1, "w": 1, "fk": 1, "fd": 1})
+        self.assertEqual(s[0]["buy"]["eco"]["r"], 1)
+        self.assertEqual(s[1]["buy"]["full"], {"r": 1, "k": 1, "d": 0, "w": 1, "fk": 0, "fd": 0})
+        self.assertEqual(s[1]["buy"]["pistol"]["d"], 1)
 
     def test_drop_warmup(self):
         df = pd.DataFrame({"tick": [1, 2, 3], "is_warmup_period": [True, None, False]})
