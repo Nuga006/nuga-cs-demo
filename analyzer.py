@@ -519,7 +519,9 @@ def extra_stats(parser: DemoParser, kills: pd.DataFrame, enemy_hurts: pd.DataFra
                 last_tick: int | None = None) -> dict:
     """Точность стрельбы, особые убийства, бомба и MVP — для страницы «Статистика»."""
     out = {sid: {"shots": 0, "hits": 0, "noscope": 0, "smoke": 0, "wall": 0, "blind": 0,
-                 "plants": 0, "defuses": 0, "mvps": 0} for sid in player_ids}
+                 "plants": 0, "defuses": 0, "mvps": 0,
+                 # Гранаты: брошено смоков / флешек / HE / молотовов, ослеплено врагов и своих, секунд слепоты врагов, флеш-ассисты
+                 "ns": 0, "nf": 0, "nh": 0, "nm": 0, "ef": 0, "tf": 0, "eft": 0.0, "fa": 0} for sid in player_ids}
 
     def is_gun(w) -> bool:
         w = str(w).lower()
@@ -553,6 +555,30 @@ def extra_stats(parser: DemoParser, kills: pd.DataFrame, enemy_hurts: pd.DataFra
             count(kills, "attacker_steamid", key, kills[col].fillna(False).astype(bool))
     if "penetrated" in kills.columns:
         count(kills, "attacker_steamid", "wall", pd.to_numeric(kills["penetrated"], errors="coerce").fillna(0) > 0)
+
+    # Гранаты: сколько брошено каждого вида
+    if not fires.empty and "weapon" in fires.columns:
+        w = fires["weapon"].astype(str)
+        for key, names in (("ns", ("weapon_smokegrenade",)), ("nf", ("weapon_flashbang",)),
+                           ("nh", ("weapon_hegrenade",)), ("nm", ("weapon_molotov", "weapon_incgrenade"))):
+            count(fires, "user_steamid", key, w.isin(names))
+
+    # Флешки: ослеплённые враги и свои. Слепоту короче секунды не считаем — она почти не мешает.
+    try:
+        blinds = drop_warmup(parser.parse_event("player_blind", player=["team_num"], other=["is_warmup_period"]))
+    except Exception:
+        blinds = pd.DataFrame()
+    if not blinds.empty and "blind_duration" in blinds.columns:
+        b = blinds[(pd.to_numeric(blinds["blind_duration"], errors="coerce") >= 1.0)
+                   & (blinds["attacker_steamid"].astype(str) != blinds["user_steamid"].astype(str))]
+        enemy = b["attacker_team_num"] != b["user_team_num"]
+        count(b, "attacker_steamid", "ef", enemy)
+        count(b, "attacker_steamid", "tf", ~enemy)
+        for sid, secs in b[enemy].groupby(b["attacker_steamid"].astype(str))["blind_duration"].sum().items():
+            if sid in out:
+                out[sid]["eft"] = round(float(secs), 1)
+    if "assistedflash" in kills.columns and "assister_steamid" in kills.columns:
+        count(kills, "assister_steamid", "fa", kills["assistedflash"].fillna(False).astype(bool))
 
     count(safe("bomb_planted"), "user_steamid", "plants")
     count(safe("bomb_defused"), "user_steamid", "defuses")

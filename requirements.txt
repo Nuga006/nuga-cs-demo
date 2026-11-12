@@ -4,3 +4,4 @@ zstandard
 fastapi
 uvicorn
 python-multipart
+anthropic

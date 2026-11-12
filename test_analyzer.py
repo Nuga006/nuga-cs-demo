@@ -1,12 +1,11 @@
 # Тест анализатора: разбираем настоящую демку и сверяем с разбором, сохранённым раньше.
 # Запуск:  python -m unittest test_analyzer -v
 # Нужны демка в папке CS2 (game/csgo/nuga/<id>.dem) и её разбор в matches/<id>.json.gz.
-# Если их нет — тест пропускается. После намеренного изменения подсчёта подними ANALYZER_VERSION в app.py:
-# старые разборы станут «устаревшими», и тест их пропустит, пока матч не разберут заново.
+# Если их нет — тест пропускается. Сверяются только поля из STATS: новые поля разбора тест не ломают.
+# Если ты намеренно поменял подсчёт этих полей — разбери матч заново на сайте, и тест снова станет зелёным.
 
 import gzip
 import json
-import re
 import unittest
 from pathlib import Path
 
@@ -37,7 +36,6 @@ class Helpers(unittest.TestCase):
 class SavedMatches(unittest.TestCase):
     def test_matches_saved_analysis(self):
         folder = demo_dir()
-        version = int(re.search(r"^ANALYZER_VERSION\s*=\s*(\d+)", (BASE / "app.py").read_text(encoding="utf-8"), re.M)[1])
         pairs = []
         for saved in sorted((BASE / "matches").glob("*.json.gz")):
             mid = saved.name.split(".")[0]
@@ -49,8 +47,6 @@ class SavedMatches(unittest.TestCase):
 
         dem, saved = min(pairs, key=lambda p: p[0].stat().st_size)   # самая маленькая — быстрее
         want = json.loads(gzip.open(saved).read())
-        if want.get("analyzer_version") != version:
-            self.skipTest(f"{saved.name} разобран версией {want.get('analyzer_version')}, текущая {version}")
 
         got = analyze_demo(dem)
         self.assertEqual(got["map"], want["map"])

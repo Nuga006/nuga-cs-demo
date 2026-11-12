@@ -384,10 +384,11 @@ def match_summary(mid: str, data: dict) -> dict:
 # Какие показатели игрока сохраняем в карточке матча (для «Статистики», «Рекордов» и «Сравнения»)
 STAT_FIELDS = ("name", "kills", "deaths", "assists", "adr", "hs", "kast", "rating", "fk", "fd", "ud",
                "rounds", "k2", "k3", "k4", "k5", "trades", "traded", "shots", "hits",
-               "noscope", "smoke", "wall", "blind", "plants", "defuses", "mvps", "clutch")
+               "noscope", "smoke", "wall", "blind", "plants", "defuses", "mvps", "clutch",
+               "ns", "nf", "nh", "nm", "ef", "tf", "eft", "fa")
 
-ANALYZER_VERSION = 7   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
-META_VERSION = 4     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
+ANALYZER_VERSION = 8   # растёт, когда анализатор начинает считать новое; старые разборы можно обновить бесплатно
+META_VERSION = 5     # меняем, когда в карточку матча добавляются новые поля — старые карточки пересоберутся сами
 
 
 def highlight_counts(data: dict, i: int) -> dict:
@@ -481,6 +482,7 @@ def run_analysis(raw: Path, steam_id: str, faceit_id: str | None = None):
         if not upgrade:
             change_coins(steam_id, -ANALYSIS_PRICE, f"Разбор матча {data.get('map', '')}")
         add_user_match(steam_id, mid)
+        threading.Thread(target=ai_tip_telegram, args=(mid, steam_id), daemon=True).start()   # AI-совет в Telegram, если привязан
         return saved_match_response(mid)
     except HTTPException:
         raise
@@ -509,6 +511,228 @@ def get_match(mid: str):
     if not MATCH_ID.fullmatch(mid) or not (MATCHES / f"{mid}.json.gz").exists():
         raise HTTPException(404, "Матч не найден")
     return saved_match_response(mid)
+
+
+# ---------- AI-разбор: Claude читает статистику и даёт советы ----------
+# Нужен ANTHROPIC_API_KEY в .env. Ответы кэшируются в matches/*.ai.json — повторно Claude не вызывается.
+
+AI_MODEL = "claude-opus-5-5"
+AI_PRICE = 1            # монет за новый AI-разбор (повторное открытие — бесплатно, из кэша)
+AI_FORM_MATCHES = 10    # сколько последних матчей смотрит «Разбор формы»
+AI_LOCK = threading.Lock()
+AI_FIELDS = ("name", "team", "kills", "deaths", "assists", "adr", "hs", "rating", "kast", "fk", "fd", "ud",
+             "k2", "k3", "k4", "k5", "trades", "traded", "shots", "hits", "smoke", "wall", "blind",
+             "plants", "defuses", "mvps", "clutch", "ns", "nf", "nh", "nm", "ef", "tf", "eft", "fa")
+AI_LEGEND = (
+    "rating — HLTV Rating 1.0, kast — % раундов с вкладом, fk/fd — первые убийства/смерти раунда, "
+    "ud — урон гранатами, k2..k5 — мультикиллы, trades/traded — разменял / был разменян, "
+    "clutch — клатчи по ситуациям; гранаты: ns/nf/nh/nm — брошено смоков/флешек/HE/молотовов, "
+    "ef/tf — ослеплено врагов/своих (от 1 с), eft — секунд слепоты врагов, fa — флеш-ассисты"
+)
+AI_RULES = (
+    "Без воды, без общих фраз, не выдумывай того, чего нет в данных (позиций, раскидок, событий по раундам). "
+    "Пиши простым текстом, советы — строками, начинающимися с «• ». Не длиннее 1200 символов."
+)
+AI_MATCH_SYSTEM = (
+    f"Ты тренер по Counter-Strike 2. Тебе дают статистику одного матча FACEIT: строки всех 10 игроков ({AI_LEGEND}) "
+    "и дуэли выбранного игрока. Дай выбранному игроку разбор: 1–2 предложения общей оценки, затем 3–5 конкретных "
+    f"советов, каждый с опорой на цифры из матча и сравнением с тиммейтами или соперниками. {AI_RULES}"
+)
+AI_FORM_SYSTEM = (
+    "Ты тренер по Counter-Strike 2. Тебе дают статистику одного игрока за его последние матчи FACEIT, новые сверху "
+    f"({AI_LEGEND}; team_rating — средний рейтинг его команды в том матче). Найди закономерности: что повторяется "
+    "из матча в матч, на каких картах он сильнее и слабее, что улучшается и что ухудшается. Дай 1–2 предложения "
+    f"общей оценки формы, затем 3–5 конкретных советов с опорой на цифры. {AI_RULES}"
+)
+
+
+def ai_ask(system: str, facts: dict, lang: str) -> str:
+    """Один запрос к Claude. Ошибки превращаем в понятные HTTPException."""
+    import anthropic          # импорт здесь: без AI-разбора сервер работает и без этой библиотеки
+
+    question = json.dumps(facts, ensure_ascii=False) + ("\n\nAnswer in English." if lang == "en" else "")
+    try:
+        msg = anthropic.Anthropic().beta.messages.create(     # ключ берётся из ANTHROPIC_API_KEY
+            model=AI_MODEL,
+            max_tokens=16000,
+            output_config={"effort": "medium"},
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",          # если модель откажет — запрос сам уйдёт на запасную
+            system=system,
+            messages=[{"role": "user", "content": question}],
+        )
+    except anthropic.RateLimitError:
+        raise HTTPException(429, "AI сейчас перегружен — попробуйте через минуту")
+    except anthropic.APIStatusError as e:
+        raise HTTPException(502, f"Ошибка AI ({e.status_code})")
+    except anthropic.APIConnectionError:
+        raise HTTPException(502, "Нет связи с AI")
+    if msg.stop_reason == "refusal":
+        raise HTTPException(502, "AI отказался разбирать этот матч")
+    text = "".join(b.text for b in msg.content if b.type == "text").strip()
+    if not text:
+        raise HTTPException(502, "AI вернул пустой ответ")
+    return text
+
+
+def ai_cached(path: Path, key: str, make, steam_id: str | None = None) -> str:
+    """Ответ из кэша, иначе спрашиваем Claude. steam_id — с кого списать AI_PRICE (None — бесплатно)."""
+    load = lambda: json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    cached = load().get(key)
+    if cached:
+        return cached
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "AI-разбор не настроен: добавьте ANTHROPIC_API_KEY в файл .env")
+    if steam_id and get_user(steam_id)["coins"] < AI_PRICE:
+        raise HTTPException(402, f"Не хватает монет: AI-разбор стоит {AI_PRICE}. Заберите ежедневный бонус!")
+    text = make()
+    with AI_LOCK:                     # два ответа подряд не должны затереть друг друга в файле
+        cache = load()
+        cache[key] = text
+        path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    if steam_id:
+        change_coins(steam_id, -AI_PRICE, "AI-разбор")
+    return text
+
+
+def load_match(mid: str) -> dict:
+    path = MATCHES / f"{mid}.json.gz"
+    if not MATCH_ID.fullmatch(mid) or not path.exists():
+        raise HTTPException(404, "Матч не найден")
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def match_facts(data: dict, idx: int) -> dict:
+    """Что отдаём Claude про матч: строки всех игроков и дуэли выбранного."""
+    players = data["players"]
+    me = players[idx]
+    names = {p["steamid"]: p["name"] for p in players}
+    duels = data.get("duels", {})
+    return {
+        "map": data.get("map"), "rounds": data.get("rounds"), "player": me["name"],
+        "players": [{k: p.get(k) for k in AI_FIELDS} for p in players],
+        "player_duels": {names.get(v, "?"): {"убил": n, "убит": duels.get(v, {}).get(me["steamid"], 0)}
+                         for v, n in duels.get(me["steamid"], {}).items()},
+    }
+
+
+@app.post("/api/match/{mid}/ai")
+def ai_review(mid: str, request: Request, body: dict = Body(...)):
+    """AI-разбор игрока в матче. body: {"player": индекс в players, "lang": "ru" | "en"}."""
+    steam_id = require_login(request)
+    data = load_match(mid)
+    idx, lang = body.get("player"), "en" if body.get("lang") == "en" else "ru"
+    if not isinstance(idx, int) or not 0 <= idx < len(data["players"]):
+        raise HTTPException(400, "Неверный игрок")
+    key = f"{data['players'][idx]['steamid']}:{lang}"
+    text = ai_cached(MATCHES / f"{mid}.ai.json", key,
+                     lambda: ai_ask(AI_MATCH_SYSTEM, match_facts(data, idx), lang), steam_id)
+    return {"text": text}
+
+
+@app.post("/api/ai/form")
+def ai_form(request: Request, body: dict = Body(default={})):
+    """«Разбор формы»: Claude смотрит мои последние матчи и ищет то, что повторяется."""
+    steam_id = require_login(request)
+    lang = "en" if body.get("lang") == "en" else "ru"
+    rows, ids, name = [], [], None
+    for meta in list_matches(request):                     # мои матчи, новые сверху
+        try:
+            data = load_match(meta["id"])
+        except HTTPException:
+            continue
+        me = next((p for p in data["players"] if p["steamid"] == steam_id), None)
+        if me is None:
+            continue                                       # загрузил, но сам не играл
+        name = name or me["name"]
+        team = [p.get("rating") or 0 for p in data["players"] if p["team"] == me["team"]]
+        ids.append(meta["id"])
+        rows.append({"map": data.get("map"), "date": date.fromtimestamp(meta.get("created", 0)).isoformat(),
+                     "team_rating": round(sum(team) / len(team), 2),
+                     **{k: me.get(k) for k in AI_FIELDS if k not in ("name", "team")}})
+        if len(rows) == AI_FORM_MATCHES:
+            break
+    if len(rows) < 2:
+        raise HTTPException(400, "Для разбора формы нужно хотя бы 2 разобранных матча, в которых вы играли")
+    facts = {"player": name, "matches": rows}
+    text = ai_cached(MATCHES / f"form-{steam_id}.ai.json", f"{lang}:{','.join(ids)}",
+                     lambda: ai_ask(AI_FORM_SYSTEM, facts, lang), steam_id)
+    return {"text": text, "matches": len(rows)}
+
+
+@app.get("/api/me/heat")
+def my_heat(request: Request, map: str = Query(..., max_length=40)):
+    """Хитмап по всем моим матчам на карте: точки моих убийств и смертей (формат kill_events, см. analyzer.py)."""
+    steam_id = require_login(request)
+    kills, deaths, n = [], [], 0
+    for meta in list_matches(request):
+        if meta.get("map") != map:
+            continue
+        try:
+            data = load_match(meta["id"])
+        except HTTPException:
+            continue
+        idx = next((i for i, p in enumerate(data["players"]) if p["steamid"] == steam_id), None)
+        if idx is None:
+            continue
+        n += 1
+        for e in data.get("kill_events", []):
+            if e[2] == idx and e[4] is not None:
+                kills.append([e[4], e[5]])
+            if e[3] == idx and e[6] is not None:
+                deaths.append([e[6], e[7]])
+    return {"kills": kills, "deaths": deaths, "matches": n}
+
+
+AVG_CACHE: dict = {"ts": 0, "data": {}}
+
+
+@app.get("/api/averages")
+def site_averages():
+    """Средние по всем игрокам во всех разборах сайта — для подписи «Среднее по сайту» в «Моей статистике».
+    Ключи совпадают с карточками на странице. Пересчитываем не чаще раза в 10 минут."""
+    if time.time() - AVG_CACHE["ts"] < 600:
+        return AVG_CACHE["data"]
+    rows = []
+    for path in MATCHES.glob("*.meta.json"):
+        try:
+            rows += json.loads(path.read_text(encoding="utf-8")).get("stats", [])
+        except (OSError, ValueError):
+            continue
+    total = lambda k: sum(r.get(k) or 0 for r in rows)
+    mean = lambda k: (lambda v: sum(v) / len(v) if v else None)([r[k] for r in rows if r.get(k) is not None])
+    kills, deaths = total("kills"), total("deaths")
+    data = {
+        "rating": mean("rating"), "adr": mean("adr"), "kast": mean("kast"), "ef": mean("ef"),
+        "kd": kills / deaths if deaths else None,
+        "hs": sum((r.get("kills") or 0) * (r.get("hs") or 0) / 100 for r in rows) / kills * 100 if kills else None,
+        "opening": total("fk") / (total("fk") + total("fd")) * 100 if total("fk") + total("fd") else None,
+        "players": len(rows),
+    }
+    AVG_CACHE.update(ts=time.time(), data=data)
+    return data
+
+
+def ai_tip_telegram(mid: str, steam_id: str) -> None:
+    """После нового разбора: если игрок привязал Telegram и играл в матче — бот присылает AI-разбор.
+    Для игрока бесплатно (платит сайт); ответ попадает в кэш, поэтому кнопка на сайте потом тоже бесплатна."""
+    if not os.environ.get("ANTHROPIC_API_KEY") or not telegram_bot.enabled():
+        return
+    with closing(db()) as con:
+        chat = con.execute("SELECT chat_id FROM tg_links WHERE steam_id = ?", (steam_id,)).fetchone()
+    if not chat:
+        return
+    try:
+        data = load_match(mid)
+        idx = next(i for i, p in enumerate(data["players"]) if p["steamid"] == steam_id)
+        text = ai_cached(MATCHES / f"{mid}.ai.json", f"{steam_id}:ru",
+                         lambda: ai_ask(AI_MATCH_SYSTEM, match_facts(data, idx), "ru"))
+    except (HTTPException, StopIteration):
+        return                                             # не играл в матче или AI недоступен — молчим
+    esc = telegram_bot.esc
+    telegram_bot.send_message(chat["chat_id"], f"🤖 <b>AI-разбор: {esc(str(data.get('map', '')))}</b>\n\n{esc(text)}",
+                              f"{SITE_URL}/match/{mid}" if SITE_URL else None)
 
 
 def upgrade_meta(meta: dict) -> dict:
@@ -577,6 +801,7 @@ def delete_match(mid: str, request: Request):
     if not mine and not played:
         raise HTTPException(403, "Удалить можно только свой разбор")
     (MATCHES / f"{mid}.json.gz").unlink(missing_ok=True)
+    (MATCHES / f"{mid}.ai.json").unlink(missing_ok=True)
     meta_path.unlink(missing_ok=True)
     with closing(db()) as con, con:
         con.execute("DELETE FROM user_matches WHERE match_id = ?", (mid,))
@@ -1185,6 +1410,7 @@ def delete_account(request: Request):
         con.execute("DELETE FROM tg_links WHERE steam_id = ?", (steam_id,))
         con.execute("DELETE FROM tg_codes WHERE steam_id = ?", (steam_id,))
     PROFILE_CACHE.pop(steam_id, None)
+    (MATCHES / f"form-{steam_id}.ai.json").unlink(missing_ok=True)     # AI-разбор формы — это личные данные
     response = Response(json.dumps({"ok": True}), media_type="application/json")
     response.delete_cookie(SESSION_COOKIE)
     return response
@@ -1267,7 +1493,8 @@ def coins(request: Request):
         log = [dict(r) for r in con.execute(
             "SELECT delta, reason, ts FROM coin_log WHERE steam_id = ? ORDER BY id DESC LIMIT 20", (steam_id,))]
     return {"coins": user["coins"], "bonus_ready": user["last_bonus"] != date.today().isoformat(),
-            "daily_bonus": DAILY_BONUS, "analysis_price": ANALYSIS_PRICE, "start_coins": START_COINS, "log": log}
+            "daily_bonus": DAILY_BONUS, "analysis_price": ANALYSIS_PRICE, "ai_price": AI_PRICE,
+            "start_coins": START_COINS, "log": log}
 
 
 @app.post("/api/coins/bonus")
